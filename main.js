@@ -289,7 +289,7 @@ for (let d = 0; d < 4; d++) { for (let o = 0; o < 2; o++) { tdBox(d, o, 0); tdBo
 
 function shape(n, st) {
   XC = 0; RT = 0; const m = n.replace(/^waxed_/, '');
-  if (AGI.size) { const model = AGM.get(AGI.get(n)); if (model && model.length) return model; }
+  if (AGI.size) { const raw=String(n||'').replace(/^minecraft:/,''); const short=raw.includes(':')?raw.slice(raw.indexOf(':')+1):raw; const gi=AGI.get(raw)||AGI.get(short)||[...AGI].find(([k])=>k.split(':').pop()===short)?.[1]; const model=gi&&(AGM.get(gi)||[...AGM].find(([k])=>k.split('.').pop()===String(gi).split('.').pop())?.[1]); if(model&&model.length)return model; }
   if (/slab$/.test(m) && !/double/.test(m)) {
     const top = (st['minecraft:vertical_half'] || st.vertical_half) === 'top' || st.top_slot_bit === 1;
     return [bx(0, top ? 8 : 0, 0, 16, top ? 16 : 8, 16)];
@@ -634,7 +634,7 @@ const GF=['east','west','up','down','south','north'];
 /* geometry list from a .geo.json: new format ("minecraft:geometry": [...]) and legacy format ("geometry.x": {bones,texturewidth,...}) */
 function geoList(j){const o=[],g=j&&j['minecraft:geometry'];
 if(Array.isArray(g)){for(const x of g){const d=x&&x.description||{};if(d.identifier)o.push({id:d.identifier,tw:+d.texture_width||16,th:+d.texture_height||16,bones:x.bones||[]})}}
-else if(j&&typeof j=='object')for(const k in j){const v=j[k];if(/^geometry\./.test(k)&&v&&typeof v=='object'&&Array.isArray(v.bones))o.push({id:k.split(':')[0],tw:+(v.texturewidth||v.texture_width)||16,th:+(v.textureheight||v.texture_height)||16,bones:v.bones})}
+else if(j&&typeof j=='object')for(const k in j){const v=j[k];if(/^geometry\./.test(k)&&v&&typeof v=='object'&&Array.isArray(v.bones))o.push({id:k,tw:+(v.texturewidth||v.texture_width)||16,th:+(v.textureheight||v.texture_height)||16,bones:v.bones})}
 return o}
 /* per-face uv rects (0..16 tile units, face order = GF) and material_instance names from one cube. box uv [u,v] = standard unfolded layout */
 function cubeUV(c,tw,th){const R=(u,v,w,h)=>[u*16/tw,v*16/th,(u+w)*16/tw,(v+h)*16/th].map(x=>+x.toFixed(4)),F=R(0,0,tw,th);
