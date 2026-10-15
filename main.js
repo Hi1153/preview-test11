@@ -289,7 +289,7 @@ for (let d = 0; d < 4; d++) { for (let o = 0; o < 2; o++) { tdBox(d, o, 0); tdBo
 
 function shape(n, st) {
   XC = 0; RT = 0; const m = n.replace(/^waxed_/, '');
-  if (AGI.size) { const raw=String(n||'').replace(/^minecraft:/,''); const short=raw.includes(':')?raw.slice(raw.indexOf(':')+1):raw; const gi=AGI.get(raw)||AGI.get(short)||[...AGI].find(([k])=>k.split(':').pop()===short)?.[1]; const model=gi&&(AGM.get(gi)||[...AGM].find(([k])=>k.split('.').pop()===String(gi).split('.').pop())?.[1]); if(model&&model.length)return model; }
+  { const raw=String(n||'').replace(/^minecraft:/,''); const short=raw.includes(':')?raw.slice(raw.indexOf(':')+1):raw; const gi=AGI.get(raw)||AGI.get(short)||[...AGI].find(([k])=>k.split(':').pop()===short)?.[1]; let model=gi&&(AGM.get(gi)||[...AGM].find(([k])=>k.split('.').pop()===String(gi).split('.').pop())?.[1]); if(!model||!model.length){ const hit=[...AGM].find(([k,v])=>v&&v.length&&(k.split('.').pop()===short||k.split('.').pop().endsWith('_'+short))); if(hit)model=hit[1]; } if(model&&model.length)return model; }
   if (/slab$/.test(m) && !/double/.test(m)) {
     const top = (st['minecraft:vertical_half'] || st.vertical_half) === 'top' || st.top_slot_bit === 1;
     return [bx(0, top ? 8 : 0, 0, 16, top ? 16 : 8, 16)];
