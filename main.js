@@ -1214,7 +1214,8 @@ function wtc() {
 
 async function applyResourcePack(reader, name) {
   const terrainBytes = await reader.read('textures/terrain_texture.json');
-  const blocksBytes = await reader.read('blocks.json');
+  // Bedrockのblocks.jsonは textures/blocks.json に置かれる場合もある。
+  const blocksBytes = await reader.read('textures/blocks.json') || await reader.read('blocks.json');
   const terrain = packJson(terrainBytes), blocks = packJson(blocksBytes);
   if (!(terrain && terrain.texture_data) && !(blocks && typeof blocks === 'object')) {
     throw new Error('resource_packフォルダではありません（terrain_texture.json / blocks.json が見つかりません）。');
