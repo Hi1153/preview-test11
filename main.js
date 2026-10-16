@@ -914,7 +914,14 @@ function dirPackReader(files) {
     : marker.slice(0, -'blocks.json'.length);
   return {
     read: async path => {
-      const file = entries.get(prefix + path) || entries.get(path);
+      const candidates = [path];
+      if (path.startsWith('textures/blocks/')) candidates.push(path.slice('textures/'.length));
+      else if (path.startsWith('blocks/')) candidates.push(`textures/${path}`);
+      let file = null;
+      for (const candidate of candidates) {
+        file = entries.get(prefix + candidate) || entries.get(candidate);
+        if (file) break;
+      }
       return file ? new Uint8Array(await file.arrayBuffer()) : null;
     }
   };
@@ -927,10 +934,42 @@ async function zipPackReader(file) {
   if (!marker) return null;
   const suffix = marker.name.endsWith('terrain_texture.json') ? 'textures/terrain_texture.json' : 'blocks.json';
   const prefix = marker.name.slice(0, -suffix.length);
+  const byName = new Map(zip.map(entry => [entry.name, entry]));
   return {
     read: async path => {
-      const entry = zip.find(e => e.name === prefix + path) || zip.find(e => e.name === path);
+      const candidates = [path];
+      if (path.startsWith('textures/blocks/')) candidates.push(path.slice('textures/'.length));
+      else if (path.startsWith('blocks/')) candidates.push(`textures/${path}`);
+      let entry = null;
+      for (const candidate of candidates) {
+        entry = byName.get(prefix + candidate) || byName.get(candidate);
+        if (entry) break;
+      }
       return entry ? zip.get(entry) : null;
+    }
+  };
+}
+
+function directPackReader() {
+  const cache = new Map();
+  return {
+    read: async path => {
+      if (cache.has(path)) return cache.get(path);
+      const candidates = [path];
+      if (path.startsWith('textures/blocks/')) candidates.push(path.slice('textures/'.length));
+      else if (path.startsWith('blocks/')) candidates.push(`textures/${path}`);
+      let bytes = null;
+      for (const candidate of candidates) {
+        try {
+          const response = await fetch(new URL(candidate, document.baseURI), { cache: 'force-cache' });
+          if (response.ok) {
+            bytes = new Uint8Array(await response.arrayBuffer());
+            break;
+          }
+        } catch (_) {}
+      }
+      cache.set(path, bytes);
+      return bytes;
     }
   };
 }
@@ -948,11 +987,57 @@ function firstTexturePath(value) {
   return value.replace(/\.png$/i, '');
 }
 
+function decodeTga(bytes) {
+  if (!bytes || bytes.length < 18) throw new Error('TGAヘッダーがありません。');
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const idLength = view.getUint8(0), colorMapType = view.getUint8(1), imageType = view.getUint8(2);
+  const width = view.getUint16(12, true), height = view.getUint16(14, true), depth = view.getUint8(16), descriptor = view.getUint8(17);
+  const channels = depth >> 3, pixels = width * height;
+  if (colorMapType !== 0 || !width || !height || width > 4096 || height > 4096 || pixels > 16777216 ||
+      ![2, 10].includes(imageType) || ![24, 32].includes(depth)) {
+    throw new Error('未対応のTGA形式です。');
+  }
+  const offset = 18 + idLength, expected = pixels * channels, raw = new Uint8Array(expected);
+  if (imageType === 2) {
+    if (offset + expected > bytes.length) throw new Error('TGAデータが途中で切れています。');
+    raw.set(bytes.subarray(offset, offset + expected));
+  } else {
+    let src = offset, dst = 0;
+    while (dst < expected) {
+      if (src >= bytes.length) throw new Error('TGAのRLEデータが途中で切れています。');
+      const packet = bytes[src++], count = (packet & 0x7f) + 1, size = count * channels;
+      if (dst + size > expected) throw new Error('TGAのRLEパケットが画像サイズを超えています。');
+      if (packet & 0x80) {
+        if (src + channels > bytes.length) throw new Error('TGAのRLE色データが途中で切れています。');
+        for (let i = 0; i < count; i++) raw.set(bytes.subarray(src, src + channels), dst + i * channels);
+        src += channels;
+      } else {
+        if (src + size > bytes.length) throw new Error('TGAのRLE色データが途中で切れています。');
+        raw.set(bytes.subarray(src, src + size), dst);
+        src += size;
+      }
+      dst += size;
+    }
+  }
+  const rgba = new Uint8ClampedArray(pixels * 4), topOrigin = !!(descriptor & 0x20), rightOrigin = !!(descriptor & 0x10);
+  const hasAlpha = channels === 4 && (descriptor & 0x0f) > 0;
+  for (let i = 0; i < pixels; i++) {
+    const sx = i % width, sy = Math.floor(i / width);
+    const x = rightOrigin ? width - 1 - sx : sx, y = topOrigin ? sy : height - 1 - sy;
+    const src = i * channels, dst = (y * width + x) * 4;
+    rgba[dst] = raw[src + 2]; rgba[dst + 1] = raw[src + 1]; rgba[dst + 2] = raw[src];
+    rgba[dst + 3] = hasAlpha ? raw[src + 3] : 255;
+  }
+  return { width, height, rgba };
+}
+
 function resolveTexturePath(key) {
   if (!key) return null;
   const mapped = TXD.get(key);
   let path = firstTexturePath(mapped);
   if (!path) path = key;
+  path = path.replace(/^\.\//, '');
+  if (path.startsWith('blocks/')) return path;
   if (path.startsWith('textures/')) return path;
   return `textures/blocks/${path}`;
 }
@@ -1009,12 +1094,23 @@ function fillTextureLayer(layer, color) {
 
 async function loadTextureImage(path, layer, fallbackColor, epoch) {
   try {
-    let bytes = null;
+    let bytes = null, format = '';
     for (let i = TXP.length - 1; i >= 0 && !bytes; i--) {
       bytes = await TXP[i].read(`${path}.png`);
+      if (bytes) format = 'png';
+      else {
+        bytes = await TXP[i].read(`${path}.tga`);
+        if (bytes) format = 'tga';
+      }
     }
     if (!bytes || epoch !== txEpoch || !gl || !TXT) return;
-    const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+    let bitmap;
+    if (format === 'tga') {
+      const image = decodeTga(bytes);
+      bitmap = await createImageBitmap(new ImageData(image.rgba, image.width, image.height));
+    } else {
+      bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+    }
     TXX.clearRect(0, 0, 16, 16);
     const size = Math.min(bitmap.width, bitmap.height);
     TXX.drawImage(bitmap, 0, 0, size, size, 0, 0, 16, 16);
@@ -1120,11 +1216,17 @@ async function applyResourcePack(reader, name) {
 async function loadRootTexturePack() {
   const status = document.getElementById('resourcePackStatus');
   try {
+    const directReader = directPackReader();
+    const terrainBytes = await directReader.read('textures/terrain_texture.json');
+    if (terrainBytes) {
+      if (!manualPackChosen) await applyResourcePack(directReader, 'GitHub /textures/');
+      return;
+    }
     const url = new URL('textures.zip', document.baseURI);
     const response = await fetch(url, { cache: 'no-cache' });
     if (!response.ok) {
       if (status && !manualPackChosen) {
-        status.textContent = 'textures.zipが見つかりません。手動選択もできます。';
+        status.textContent = 'textures/terrain_texture.json と textures.zip が見つかりません。手動選択もできます。';
         status.className = 'resource-pack-status';
       }
       return;
@@ -1137,7 +1239,7 @@ async function loadRootTexturePack() {
   } catch (error) {
     console.warn('Root textures.zip could not be loaded:', error);
     if (status && !manualPackChosen) {
-      status.textContent = 'textures.zipを読み込めません。手動選択または簡易表示を使えます。';
+      status.textContent = 'GitHubのテクスチャを読み込めません。手動選択または簡易表示を使えます。';
       status.className = 'resource-pack-status';
     }
   }
