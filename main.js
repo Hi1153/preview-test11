@@ -984,7 +984,7 @@ function firstTexturePath(value) {
   }
   if (value && typeof value === 'object') return firstTexturePath(value.path || value.textures);
   if (typeof value !== 'string') return null;
-  return value.replace(/\.png$/i, '');
+  return value.replace(/\.(png|tga)$/i, '');
 }
 
 function decodeTga(bytes) {
@@ -1042,6 +1042,49 @@ function resolveTexturePath(key) {
   return `textures/blocks/${path}`;
 }
 
+
+const TEX_ALIASES = {
+  stone: ['stone'], granite: ['stone_granite'], diorite: ['stone_diorite'], andesite: ['stone_andesite'],
+  deepslate: ['deepslate'], cobbled_deepslate: ['cobbled_deepslate'],
+  oak_planks: ['planks_oak'], spruce_planks: ['planks_spruce'], birch_planks: ['planks_birch'],
+  jungle_planks: ['planks_jungle'], acacia_planks: ['planks_acacia'], dark_oak_planks: ['planks_big_oak'],
+  mangrove_planks: ['planks_mangrove'], cherry_planks: ['planks_cherry'], bamboo_planks: ['planks_bamboo'],
+  oak_log: ['log_oak'], spruce_log: ['log_spruce'], birch_log: ['log_birch'],
+  jungle_log: ['log_jungle'], acacia_log: ['log_acacia'], dark_oak_log: ['log_big_oak'],
+  mangrove_log: ['log_mangrove'], cherry_log: ['log_cherry'],
+  oak_leaves: ['leaves_oak'], spruce_leaves: ['leaves_spruce'], birch_leaves: ['leaves birch', 'leaves_birch'],
+  jungle_leaves: ['leaves_jungle'], acacia_leaves: ['leaves_acacia'], dark_oak_leaves: ['leaves_big_oak'],
+  grass_block: ['grass_top'], dirt: ['dirt'], coarse_dirt: ['dirt'],
+  podzol: ['dirt_podzol_top'], mycelium: ['mycelium_top'],
+  sand: ['sand'], red_sand: ['red_sand'], gravel: ['gravel'],
+  coal_ore: ['coal_ore'], iron_ore: ['iron_ore'], gold_ore: ['gold_ore'], diamond_ore: ['diamond_ore'],
+  redstone_ore: ['redstone_ore'], lapis_ore: ['lapis_ore'], emerald_ore: ['emerald_ore'],
+  copper_ore: ['copper_ore'], deepslate_coal_ore: ['deepslate_coal_ore'],
+  deepslate_iron_ore: ['deepslate_iron_ore'], deepslate_gold_ore: ['deepslate_gold_ore'],
+  deepslate_diamond_ore: ['deepslate_diamond_ore'], deepslate_redstone_ore: ['deepslate_redstone_ore'],
+  deepslate_lapis_ore: ['deepslate_lapis_ore'], deepslate_emerald_ore: ['deepslate_emerald_ore'],
+  glass: ['glass'], bricks: ['brick'], bookshelf: ['bookshelf'],
+  netherrack: ['hellrock'], nether_bricks: ['nether_brick'],
+  crafting_table: ['crafting_table_top'], furnace: ['furnace_front_off'],
+  obsidian: ['obsidian'], bedrock: ['bedrock'], clay: ['clay'],
+  moss_block: ['moss_block'], snow_block: ['snow'], packed_ice: ['ice_packed'],
+  white_wool: ['wool_colored_white'], orange_wool: ['wool_colored_orange'],
+  magenta_wool: ['wool_colored_magenta'], light_blue_wool: ['wool_colored_light_blue'],
+  yellow_wool: ['wool_colored_yellow'], lime_wool: ['wool_colored_lime'],
+  pink_wool: ['wool_colored_pink'], gray_wool: ['wool_colored_gray'],
+  light_gray_wool: ['wool_colored_silver'], cyan_wool: ['wool_colored_cyan'],
+  purple_wool: ['wool_colored_purple'], blue_wool: ['wool_colored_blue'],
+  brown_wool: ['wool_colored_brown'], green_wool: ['wool_colored_green'],
+  red_wool: ['wool_colored_red'], black_wool: ['wool_colored_black']
+};
+
+function textureAlias(name) {
+  const candidates = TEX_ALIASES[name] || [];
+  for (const candidate of candidates) if (TXD.has(candidate)) return candidate;
+  if (TXD.has(name)) return name;
+  return name;
+}
+
 function textureFaces(name) {
   let spec = BD.get(name);
   if (spec === undefined) spec = BD.get(`minecraft:${name}`);
@@ -1064,7 +1107,7 @@ function textureFaces(name) {
       resolveTexturePath(spec.north ?? side)
     ];
   }
-  const alias = TXD.has(name) ? name : name;
+  const alias = textureAlias(name);
   return Array(6).fill(resolveTexturePath(alias));
 }
 
