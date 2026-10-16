@@ -192,6 +192,8 @@ const RB = [[/tinted_glass/, 0x2c242f], [/glass/, 0xb8e0e8], [/deepslate/, 0x4a4
 const BOXES = [], BM = new Map();
 function bx(a, b, c, d, e, f) { const k = a + ',' + b + ',' + c + ',' + d + ',' + e + ',' + f, i = BM.get(k); if (i !== undefined) return i; BM.set(k, BOXES.length); BOXES.push([a / 16, b / 16, c / 16, d / 16, e / 16, f / 16]); return BOXES.length - 1; }
 bx(0, 0, 0, 16, 16, 16);
+// Bedrock add-on custom block geometry registry. Model coordinates are converted to 1/16 block units.
+const ADDON_GEOMETRY = new Map(), ADDON_BLOCKS = new Map();
 function rotb(b, k) { let [x0, y0, z0, x1, y1, z1] = b; for (let i = 0; i < k; i++)[x0, z0, x1, z1] = [16 - z1, x0, 16 - z0, x1]; return bx(x0, y0, z0, x1, y1, z1); }
 
 const TD = [[0, 0, 0, 3, 16, 16], [13, 0, 0, 16, 16, 16], [0, 0, 0, 16, 16, 3], [0, 0, 13, 16, 16, 16]];
@@ -338,7 +340,7 @@ function gid(n, st) {
     if (!f) { const w = m.match(/^(?:stripped_)?(dark_oak|oak|spruce|birch|jungle|acacia|mangrove|cherry|bamboo|crimson|warped|pale_oak)(?:_|$)/); if (w) { c = WOOD[w[1]]; f = 1; } }
     if (!f) for (const [r, h] of RB) if (r.test(m)) { c = h; f = 1; break; }
     if (!f) c = hsl(hash(m) % 360, .42, .5);
-    bs = shape(n, st); if (bs) { k = 4; xc = XC; rt = RT; if (/stairs$/.test(n)) sv = { d: (st.weirdo_direction | 0) & 3, u: st.upside_down_bit | 0 }; cf = /fence$/.test(n) ? 1 : /(glass_pane|_bars)$/.test(n) ? 2 : /fence_gate$/.test(n) ? 3 : /^structure_void$/.test(n) ? 5 : 0; if (/(^|_)door$/.test(n)) di = { u: st.upper_block_bit | 0, d: st.direction | 0, o: st.open_bit | 0, h: st.door_hinge_bit | 0 }; }
+    bs = ADDON_BLOCKS.get(n) || shape(n, st); if (bs) { k = 4; xc = XC; rt = RT; if (/stairs$/.test(n)) sv = { d: (st.weirdo_direction | 0) & 3, u: st.upside_down_bit | 0 }; cf = /fence$/.test(n) ? 1 : /(glass_pane|_bars)$/.test(n) ? 2 : /fence_gate$/.test(n) ? 3 : /^structure_void$/.test(n) ? 5 : 0; if (/(^|_)door$/.test(n)) di = { u: st.upper_block_bit | 0, d: st.direction | 0, o: st.open_bit | 0, h: st.door_hinge_bit | 0 }; }
   }
   col.push(c); crs.push(xc); rts.push(rt); kind.push(k); shp.push(bs); dinf.push(di); sti.push(sv); cfa.push(cf); tr.push((k == 2 || /glass/.test(n) || /^(frosted_)?ice$/.test(n)) ? 1 : 0); wl.push(0); bnm.push(n); ids.set(ck, i); return i;
 }
@@ -769,6 +771,40 @@ async function parseLdbPool(z, fl, idxs, Ms, onFile) {
   dead = true; for (const w of ws) w.terminate(); URL.revokeObjectURL(url); return [...left];
 }
 
+async function loadWorldAddonPacks(zip) {
+  ADDON_GEOMETRY.clear(); ADDON_BLOCKS.clear();
+  const entries = zip.filter(e => /^(resource_packs|behavior_packs)\/[^/]+\//.test(e.name));
+  const packs = new Map();
+  for (const e of entries) {
+    const m=e.name.match(/^(resource_packs|behavior_packs)\/([^/]+)\/(.+)$/); if(!m) continue;
+    const key=m[1]+'/'+m[2]; if(!packs.has(key)) packs.set(key,{type:m[1],name:m[2],files:new Map()}); packs.get(key).files.set(m[3],e);
+  }
+  const resources=[...packs.values()].filter(p=>p.type==='resource_packs');
+  // Merge pack metadata while keeping each pack available as a texture source.
+  const terrainMerged={texture_data:{}}, blocksMerged={};
+  for(const rp of resources){
+    for(const [metaPath,target] of [['textures/terrain_texture.json',terrainMerged],['textures/blocks.json',blocksMerged],['blocks.json',blocksMerged]]){
+      const e=rp.files.get(metaPath); if(!e)continue; try{const j=packJson(await zip.get(e)); if(metaPath.endsWith('terrain_texture.json'))Object.assign(target.texture_data,j?.texture_data||{}); else if(j)Object.assign(target,j);}catch{}
+    }
+  }
+  const addonReader={read:async path=>{
+    if(path==='textures/terrain_texture.json')return new TextEncoder().encode(JSON.stringify(terrainMerged));
+    if(path==='textures/blocks.json'||path==='blocks.json')return new TextEncoder().encode(JSON.stringify(blocksMerged));
+    const candidates=[path,path.startsWith('textures/blocks/')?path.slice('textures/'.length):path,path.startsWith('blocks/')?'textures/'+path:path];
+    for(let i=resources.length-1;i>=0;i--)for(const candidate of candidates){const e=resources[i].files.get(candidate);if(e)return zip.get(e)} return null;
+  }};
+  if(resources.length){try{await applyResourcePack(addonReader,'ワールド内リソースパック')}catch(err){console.warn('resource packs skipped',err)}}
+  for(const rp of resources){
+    for(const [path,e] of rp.files){if(!/^models\/blocks\/.*\.json$/i.test(path))continue;try{const j=packJson(await zip.get(e));if(!j)continue;const geos=j['minecraft:geometry']||j.geometry||[];for(const geo of (Array.isArray(geos)?geos:[geos])){const id=geo.description?.identifier||geo.identifier;if(!id)continue;const boxes=[];for(const bone of geo.bones||[])for(const cube of bone.cubes||[]){const o=cube.origin||[0,0,0],sz=cube.size||[16,16,16];let x=Number(o[0]),y=Number(o[1]),z=Number(o[2]),w=Number(sz[0]),h=Number(sz[1]),d=Number(sz[2]);const pivot=cube.pivot||bone.pivot||[8,8,8];if(cube.rotation||bone.rotation){/* rotated cubes retain their bounds as a safe approximation */}
+const lo=[x,y,z].map((v,i)=>Math.max(0,Math.min(16,v+8))),hi=[x+w,y+h,z+d].map((v,i)=>Math.max(0,Math.min(16,v+8)));if(hi.some((v,i)=>v<=lo[i]))continue;boxes.push(bx(lo[0],lo[1],lo[2],hi[0],hi[1],hi[2]));}if(boxes.length)ADDON_GEOMETRY.set(id,boxes);}}catch(err){console.warn('geometry json skipped',path,err)}}
+  }
+  // Map behavior-pack block identifiers to their resource-pack geometry and texture keys.
+  const resourceGeometry=new Map();
+  for(const rp of resources){for(const [path,e] of rp.files){if(!/^blocks\/.*\.json$/i.test(path))continue;try{const j=packJson(await zip.get(e));const def=j?.['minecraft:block']||j?.['minecraft:client_block']||j;if(!def||!def.description)continue;const id=def.description.identifier;const geo=def.components?.['minecraft:geometry'];const geoId=typeof geo==='string'?geo:geo?.identifier;if(id&&geoId)resourceGeometry.set(id,{geoId,texture:def.components?.['minecraft:material_instances']?.['*']?.texture});}catch{}}}
+  for(const bp of [...packs.values()].filter(p=>p.type==='behavior_packs'))for(const [path,e] of bp.files){if(!/^blocks\/.*\.json$/i.test(path))continue;try{const j=packJson(await zip.get(e));const def=j?.['minecraft:block']||j;if(!def?.description?.identifier)continue;const id=def.description.identifier;const geo=def.components?.['minecraft:geometry'];const geoId=typeof geo==='string'?geo:geo?.identifier;const tex=def.components?.['minecraft:material_instances']?.['*']?.texture;const match=resourceGeometry.get(id);const g=geoId||match?.geoId;const boxes=ADDON_GEOMETRY.get(g);if(g&&boxes?.length){ADDON_BLOCKS.set(id,boxes);if(tex)BD.set(id,tex);else if(match?.texture)BD.set(id,match.texture);}}catch{}}
+  console.info(`Addon custom geometry: ${ADDON_BLOCKS.size} block definitions, ${ADDON_GEOMETRY.size} models`);
+}
+
 async function loadWorld(f) {
   const distanceSlider = document.getElementById('renderDistanceSlider');
   if (distanceSlider) distanceSlider.disabled = true;
@@ -787,6 +823,7 @@ async function loadWorld(f) {
   await tick();
   try {
     const z = await openZip(f);
+    await loadWorldAddonPacks(z);
     const lv = z.find(e => /(^|\/)level\.dat$/.test(e.name)); let name = f.name.replace(/\.\w+$/, ''), sx = 0, sz = 0;
     if (lv) { try { const d = await z.get(lv), o = nbt(d.subarray(8), { p: 0 }); if (o.LevelName) name = o.LevelName; sx = o.SpawnX | 0; sz = o.SpawnZ | 0; } catch (e) { } }
     const Ms = new Map([[0, new Map()], [1, new Map()], [2, new Map()]]), fc = new Map(); let cf = 0, fcb = 0;
@@ -1289,7 +1326,7 @@ async function loadRootTexturePack() {
   }
 }
 
-const VS = `#version 300 es
+function vertexShaderSource(){ return `#version 300 es
 in ivec4 aP;in vec4 aC;uniform mat4 uVP;uniform vec3 uCam;uniform vec3 uTint[6];
 out vec3 vC;out vec2 vU;flat out int vT;
 const float SH[6]=float[](.8,.7,1.,.5,.75,.65);
@@ -1322,7 +1359,7 @@ void main(){
   float pa=a==0?p.x:a==1?p.y:p.z,ce=a==0?uCam.x:a==1?uCam.y:uCam.z;
   if((ce-pa)*(s*2.-1.)<0.){gl_Position=vec4(2.,2.,2.,1.);return;}
   gl_Position=uVP*vec4(p,1.);
-}`;
+}`; }
 const FS = `#version 300 es
 precision highp float;precision highp int;precision highp sampler2DArray;
 in vec3 vC;in vec2 vU;flat in int vT;uniform float uA;uniform sampler2DArray uTex;out vec4 o;
@@ -1345,7 +1382,7 @@ function initWebGLCanvas() {
 
   const sh = (t, s) => { const h = gl.createShader(t); gl.shaderSource(h, s); gl.compileShader(h); return h; };
   prog = gl.createProgram();
-  gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS));
+  gl.attachShader(prog, sh(gl.VERTEX_SHADER, vertexShaderSource()));
   gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS));
   gl.linkProgram(prog);
   if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
