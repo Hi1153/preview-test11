@@ -953,14 +953,14 @@
 
           <div class="resource-pack-tools">
             <h4>標準テクスチャ</h4>
-            <p>同じ階層にtextures.zipがあれば自動読込します。別のMinecraft resource_packも、フォルダまたは.mcpack/.zipから選べます。</p>
+            <p>textures/terrain_texture.jsonを読み、必要なtextures/blocks/*.png・.tgaを自動取得します。textures.zipと手動選択にも対応。</p>
             <div class="resource-pack-actions">
               <button type="button" id="resourcePackFolderButton" class="resource-pack-button">フォルダを選択</button>
               <button type="button" id="resourcePackFileButton" class="resource-pack-button">.mcpack / .zip</button>
             </div>
             <input class="visually-hidden-input" type="file" id="resourcePackFolder" webkitdirectory directory multiple aria-label="Minecraft resource_packフォルダを選択">
             <input class="visually-hidden-input" type="file" id="resourcePackFile" accept=".mcpack,.zip,application/zip" aria-label="Minecraftリソースパックファイルを選択">
-            <div id="resourcePackStatus" class="resource-pack-status" role="status" aria-live="polite">textures.zipを確認中… ファイルは端末内で処理されます。</div>
+            <div id="resourcePackStatus" class="resource-pack-status" role="status" aria-live="polite">GitHubのtextures/を確認中… 表示に必要な画像だけ取得します。</div>
           </div>
 
           <div class="help">
@@ -1103,7 +1103,7 @@
 
       if (!fileInput || !fileName || !loadButton || !status) return;
 
-      let viewerModulePromise = import('./main.js?v=20261016-root-textures');
+      let viewerModulePromise = import('./main.js?v=20261016-direct-textures');
       viewerModulePromise.catch((error) => {
         console.error('MCWorld Viewer module load error:', error);
         const packStatus = document.getElementById('resourcePackStatus');
@@ -1155,7 +1155,7 @@
         status.className = 'status';
 
         try {
-          viewerModulePromise ||= import('./main.js?v=20261016-root-textures');
+          viewerModulePromise ||= import('./main.js?v=20261016-direct-textures');
           await viewerModulePromise;
           if (typeof window.startWorldViewer !== 'function') {
             throw new Error('3D描画機能が初期化されませんでした。ブラウザのJavaScript読み込みを確認してください。');
