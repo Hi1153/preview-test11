@@ -190,16 +190,7 @@ const RB = [[/tinted_glass/, 0x2c242f], [/glass/, 0xb8e0e8], [/deepslate/, 0x4a4
 [/furnace|dispenser|dropper|observer|piston|hopper|cauldron|anvil|bars|chain/, 0x666666], [/planks|log|wood|table|bookshelf|barrel|chest|door|lectern|loom|composter|jukebox|note/, 0x8b6b3f], [/lamp/, 0x8a5a30]];
 
 const BOXES = [], BM = new Map();
-function bx(a, b, c, d, e, f, uv, tag) {
-  const k = a + ',' + b + ',' + c + ',' + d + ',' + e + ',' + f + (uv ? '|' + uv.join(';') : '') + (tag ? '#' + tag : ''), i = BM.get(k);
-  if (i !== undefined) return i;
-  BM.set(k, BOXES.length);
-  const B = [a / 16, b / 16, c / 16, d / 16, e / 16, f / 16];
-  if (uv) B.uv = uv;
-  BOXES.push(B);
-  return BOXES.length - 1;
-}
-const AGM = new Map(), AGI = new Map(), BMN = new Map(), ROTB = new Set();
+function bx(a, b, c, d, e, f) { const k = a + ',' + b + ',' + c + ',' + d + ',' + e + ',' + f, i = BM.get(k); if (i !== undefined) return i; BM.set(k, BOXES.length); BOXES.push([a / 16, b / 16, c / 16, d / 16, e / 16, f / 16]); return BOXES.length - 1; }
 bx(0, 0, 0, 16, 16, 16);
 function rotb(b, k) { let [x0, y0, z0, x1, y1, z1] = b; for (let i = 0; i < k; i++)[x0, z0, x1, z1] = [16 - z1, x0, 16 - z0, x1]; return bx(x0, y0, z0, x1, y1, z1); }
 
@@ -289,7 +280,6 @@ for (let d = 0; d < 4; d++) { for (let o = 0; o < 2; o++) { tdBox(d, o, 0); tdBo
 
 function shape(n, st) {
   XC = 0; RT = 0; const m = n.replace(/^waxed_/, '');
-  { const raw=String(n||'').replace(/^minecraft:/,''); const short=raw.includes(':')?raw.slice(raw.indexOf(':')+1):raw; const gi=AGI.get(raw)||AGI.get(short)||[...AGI].find(([k])=>k.split(':').pop()===short)?.[1]; let model=gi&&(AGM.get(gi)||[...AGM].find(([k])=>k.split('.').pop()===String(gi).split('.').pop())?.[1]); if(!model||!model.length){ const hit=[...AGM].find(([k,v])=>v&&v.length&&(k.split('.').pop()===short||k.split('.').pop().endsWith('_'+short))); if(hit)model=hit[1]; } if(model&&model.length)return model; }
   if (/slab$/.test(m) && !/double/.test(m)) {
     const top = (st['minecraft:vertical_half'] || st.vertical_half) === 'top' || st.top_slot_bit === 1;
     return [bx(0, top ? 8 : 0, 0, 16, top ? 16 : 8, 16)];
@@ -313,40 +303,13 @@ function shape(n, st) {
   return null;
 }
 
-const ORI_RE = /^barrel$|^(lit_)?(furnace|blast_furnace|smoker)$|pumpkin$|^loom$|^bee_nest$|^beehive$|^chiseled_bookshelf$/, RING = [5, 0, 4, 1];
-const stv = (st, k) => st[k] !== undefined ? st[k] : st['minecraft:' + k];
-const oriKey = (st, n) => { const p = stv(st, 'pillar_axis'); return (typeof p == 'string' && p != 'y' ? ',p' + p : '') + (ORI_RE.test(n) || n == 'lectern' ? ',o' + [stv(st, 'facing_direction'), stv(st, 'cardinal_direction'), stv(st, 'direction'), stv(st, 'open_bit') | 0].join() : ''); };
-function oriOf(n, st) {
-  const p = stv(st, 'pillar_axis');
-  if (typeof p == 'string' && p != 'y') return { k: 1, ax: p == 'x' ? 0 : 2, sg: 1 };
-  if (!ORI_RE.test(n)) return 0;
-  if (n == 'barrel') { const d = stv(st, 'facing_direction') | 0; return { k: 2, ax: [1, 1, 2, 2, 0, 0][d] ?? 1, sg: [-1, 1, -1, 1, -1, 1][d] ?? 1, op: stv(st, 'open_bit') | 0 }; }
-  const c = stv(st, 'cardinal_direction'), fd = stv(st, 'facing_direction'), dr = stv(st, 'direction'); let t = -1;
-  if (typeof c == 'string') t = ['north', 'east', 'south', 'west'].indexOf(c); else if (fd >= 2 && fd <= 5) t = [0, 2, 3, 1][fd - 2]; else if (dr >= 0 && dr <= 3) t = [2, 3, 0, 1][dr];
-  return t < 0 ? 0 : { k: 3, t };
-}
-function orient(P, o) {
-  const R = [0, 0, 0, 0, 0, 0], Q = P.slice();
-  if (o.k == 3) { let b = -1; for (let j = 0; j < 4; j++) if (/front|face/.test(P[RING[j]] || '')) { b = j; break; } if (b < 0) return [P, R]; const shift = (o.t - b + 4) % 4; for (let j = 0; j < 4; j++) Q[RING[(j + shift) % 4]] = P[RING[j]]; return [Q, R]; }
-  let A = P[2], B = P[3]; if (o.k == 2) { A = P[5]; B = P[4]; if (o.op) { const x = tpath('barrel_top_open'); if (x) A = x; } }
-  for (let f = 0; f < 6; f++) { const a = f >> 1; if (a == o.ax) Q[f] = ((f & 1) == 0) == (o.sg > 0) ? A : B; else { Q[f] = P[0]; R[f] = o.ax != 1 && !(o.ax == 2 && a == 1) ? 1 : 0; } }
-  return [Q, R];
-}
-const DOORI = { wooden_door: 0, spruce_door: 1, birch_door: 2, jungle_door: 3, acacia_door: 4, dark_oak_door: 5, iron_door: 6 }, DPT = { sunflower: 0, syringa: 1, grass: 2, fern: 3, rose: 4, paeonia: 5 }, TGT = { default: 0, tall: 1, fern: 2, snow: 3 };
-function pvOf(n, st) {
-  const m = n.replace(/^waxed_/, '');
-  if (/(^|_)door$/.test(m)) return { k: 'd', h: st.upper_block_bit | 0, i: DOORI[m] | 0 };
-  if (/^(tall_grass|large_fern|double_plant|sunflower|lilac|rose_bush|peony|pitcher_plant)$/.test(m)) return { k: 'p', h: st.upper_block_bit | 0, i: DPT[st.double_plant_type] | 0 };
-  if (m == 'tallgrass') return { k: 't', i: TGT[st.tall_grass_type] | 0 };
-  return 0;
-}
 function vk(st, n) {
-  if (/button$|lantern$|^lever$|sign$|^(glow_)?frame$|candle$|^sea_pickle$|anvil$|^hopper$|cauldron$|amethyst_(cluster|bud)$/.test(n)) return JSON.stringify(st);
+  const isTop = ((st['minecraft:vertical_half'] || st.vertical_half) === 'top' || st.top_slot_bit === 1) ? 1 : 0;
   return (/door|gate|ladder|vine|lichen|wall|rod|torch/.test(n) ? st.torch_facing_direction + ',' : '') +
-    (/door|gate|ladder|vine|lichen|wall|rod|torch/.test(n) ? st.wall_post_bit + st.wall_connection_type_north + st.wall_connection_type_east + st.wall_connection_type_south + st.wall_connection_type_west + ',' + st.vine_direction_bits + ',' + st.multi_face_direction_bits + ',' + st.direction + ',' + st.open_bit + ',' + st.door_hinge_bit + ',' + st.upper_block_bit + ',' + st.in_wall_bit + ',' + st.facing_direction + ',' : '') +
-    (st.weirdo_direction | 0) + ',' + (st.upside_down_bit | 0) + ',' + (((st['minecraft:vertical_half'] || st.vertical_half) == 'top' || st.top_slot_bit == 1) | 0) + ',' + (st.height | 0) +
-    (/chain/.test(n) ? ',' + (st.pillar_axis || st['minecraft:pillar_axis'] || '') : '') + (/banner/.test(n) ? ',g' + ((st.ground_sign_direction | 0) & 15) : '') +
-    (/tall_grass|large_fern|double_plant|sunflower|lilac|rose_bush|peony|pitcher_plant|^tallgrass$/.test(n) ? ',p' + (st.upper_block_bit | 0) + (st.double_plant_type || '') + (st.tall_grass_type || '') : '') + oriKey(st, n);
+         (/door|gate|ladder|vine|lichen|wall|rod|torch/.test(n) ? st.wall_post_bit + st.wall_connection_type_north + st.wall_connection_type_east + st.wall_connection_type_south + st.wall_connection_type_west + ',' + st.vine_direction_bits + ',' + st.multi_face_direction_bits + ',' + st.direction + ',' + st.open_bit + ',' + st.door_hinge_bit + ',' + st.upper_block_bit + ',' + st.in_wall_bit + ',' + st.facing_direction + ',' : '') +
+         (st.weirdo_direction | 0) + ',' + (st.upside_down_bit | 0) + ',' + isTop + ',' + (st.height | 0) +
+         (/chain/.test(n) ? ',' + (st.pillar_axis || st['minecraft:pillar_axis'] || '') : '') +
+         (/banner/.test(n) ? ',g' + ((st.ground_sign_direction | 0) & 15) : '');
 }
 
 function hsl(h, s, l) { const a = s * Math.min(l, 1 - l), f = n => { const k = (n + h / 30) % 12; return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)); }; return (f(0) * 255 | 0) << 16 | (f(8) * 255 | 0) << 8 | (f(4) * 255 | 0); }
@@ -361,7 +324,7 @@ function nm(o) {
 }
 
 
-const ids = new Map(), col = [], kind = [], shp = [], dinf = [], cfa = [], tr = [], sti = [], crs = [], rts = [], wl = [], wlOf = new Map(), ors = [], pvs = [], bnm = [], ftl = [];
+const ids = new Map(), col = [], kind = [], shp = [], dinf = [], cfa = [], tr = [], sti = [], crs = [], rts = [], wl = [], wlOf = new Map(), bnm = [];
 function gid(n, st) {
   st = st || {}; n = n.replace('minecraft:', ''); const ck = n + '|' + vk(st, n); let i = ids.get(ck); if (i !== undefined) return i;
   i = col.length;
@@ -377,13 +340,13 @@ function gid(n, st) {
     if (!f) c = hsl(hash(m) % 360, .42, .5);
     bs = shape(n, st); if (bs) { k = 4; xc = XC; rt = RT; if (/stairs$/.test(n)) sv = { d: (st.weirdo_direction | 0) & 3, u: st.upside_down_bit | 0 }; cf = /fence$/.test(n) ? 1 : /(glass_pane|_bars)$/.test(n) ? 2 : /fence_gate$/.test(n) ? 3 : /^structure_void$/.test(n) ? 5 : 0; if (/(^|_)door$/.test(n)) di = { u: st.upper_block_bit | 0, d: st.direction | 0, o: st.open_bit | 0, h: st.door_hinge_bit | 0 }; }
   }
-  ors.push(oriOf(n, st)); pvs.push(pvOf(n, st)); bnm.push(n); col.push(c); crs.push(xc); rts.push(rt); kind.push(k); shp.push(bs); dinf.push(di); sti.push(sv); cfa.push(cf); tr.push((k == 2 || /glass/.test(n) || /^(frosted_)?ice$/.test(n)) ? 1 : 0); wl.push(0); ftl.push(null); ids.set(ck, i); return i;
+  col.push(c); crs.push(xc); rts.push(rt); kind.push(k); shp.push(bs); dinf.push(di); sti.push(sv); cfa.push(cf); tr.push((k == 2 || /glass/.test(n) || /^(frosted_)?ice$/.test(n)) ? 1 : 0); wl.push(0); bnm.push(n); ids.set(ck, i); return i;
 }
 gid('minecraft:air');
 
 function wlId(a) {
   let i = wlOf.get(a); if (i !== undefined) return i; i = col.length; wlOf.set(a, i);
-  ors.push(ors[a]); pvs.push(pvs[a]); bnm.push(bnm[a]); col.push(col[a]); crs.push(crs[a]); rts.push(rts[a]); kind.push(kind[a]); shp.push(shp[a]); dinf.push(dinf[a]); sti.push(sti[a]); cfa.push(cfa[a]); tr.push(tr[a]); wl.push(1); ftl.push(null); return i;
+  col.push(col[a]); crs.push(crs[a]); rts.push(rts[a]); kind.push(kind[a]); shp.push(shp[a]); dinf.push(dinf[a]); sti.push(sti[a]); cfa.push(cfa[a]); tr.push(tr[a]); wl.push(1); bnm.push(bnm[a]); return i;
 }
 
 function skipPl(d, t, r, dv) {
@@ -504,12 +467,12 @@ function getB(x, y, z) {
 const mkO = () => { const o = { n: 0, buf: new ArrayBuffer(12 * 2048) }; o.v = () => { o.i16 = new Int16Array(o.buf); o.bu = new Uint8Array(o.buf); }; o.v(); return o; };
 const OPs = [0, 1, 2, 3, 4, 5, 6].map(mkO), TRs = [0, 1, 2, 3, 4, 5, 6].map(mkO);
 
-function emit(Og, wx, wy, wz, c, f, sid, rt) {
-  const uvTurn = c >>> 28 & 1; c &= 0xffffff;
-  const O = Og[(rt | 0) > 0 || f >= 6 || (ROTB.size && ROTB.has(sid)) ? 6 : f];
+function emit(Og, wx, wy, wz, tex, f, sid, rt) {
+  const O = Og[(rt | 0) > 0 || f >= 6 ? 6 : f];
   if ((O.n + 1) * 12 > O.buf.byteLength) { const nb = new ArrayBuffer(O.buf.byteLength * 2); new Uint8Array(nb).set(O.bu); O.buf = nb; O.v(); }
-  const q = O.n * 6, i16 = O.i16, bu = O.bu; i16[q] = wx; i16[q + 1] = wy; i16[q + 2] = wz; i16[q + 3] = f | (rt | 0) << 6 | uvTurn << 10;
-  bu[O.n * 12 + 8] = c >> 16 & 255; bu[O.n * 12 + 9] = c >> 8 & 255; bu[O.n * 12 + 10] = c & 255; bu[O.n * 12 + 11] = sid; O.n++;
+  const q = O.n * 6, i16 = O.i16, bu = O.bu; i16[q] = wx; i16[q + 1] = wy; i16[q + 2] = wz; i16[q + 3] = f | ((wx * 7 + wy * 13 + wz * 5) & 7) << 3 | (rt | 0) << 6;
+  const o = O.n * 12, layer = tex & 0xffffff;
+  bu[o + 8] = tex >>> 24; bu[o + 9] = layer >> 8 & 255; bu[o + 10] = layer & 255; bu[o + 11] = sid; O.n++;
 }
 
 const EMPTY = { no: 0, nt: 0 };
@@ -521,145 +484,12 @@ function fin(G) {
   return { buf, cnt, n: tot };
 }
 
-/* ---------- textures (v1.26.50.4/resource_pack next to this html; add-on ready) ----------
-   PACK_BASES : folders tried in order (resource_pack root). Falls back to a folder picker (needed on file://).
-   TXP        : pack readers, later = higher priority (add-on packs are pushed after vanilla)
-   BD         : block name -> face texture spec (from blocks.json / behaviour-pack material_instances) ; namespaced names (mymod:ruby) work as-is
-   TXD         : texture short name -> path(s) (terrain_texture.json)
-   TL         : texture path -> layer in one TEXTURE_2D_ARRAY. Layer ids are stable, so images can arrive late without re-meshing. */
-const $ = id => document.getElementById(id);
-const PACK_BASES=['v1.26.50.4/resource_pack/'];
-let TXC=2048;const TXP=[],TXD=new Map(),BD=new Map(),TL=new Map(),PH=new Uint8Array(1024),TXS=document.createElement('canvas'),TXX=(TXS.width=TXS.height=16,TXS.getContext('2d',{willReadFrequently:true})),TXS2=document.createElement('canvas'),
-TINTF=Float32Array.from([1,1,1, .475,.753,.353, .282,.710,.094, .502,.655,.333, .380,.600,.380, .247,.463,.894, 1,1,1]);
-let TXT=null,TXn=1,txq=[],txb=0,txTm=0,txEp=0,TXB=0,ctxLost=0,WTC=null;const MIPB=[256,64,16,4].map(n=>new Uint8Array(n));
-const urlReader=b=>({read:async p=>{try{const r=await fetch(b+p);if(!r.ok)return null;return new Uint8Array(await r.arrayBuffer())}catch(e){return null}}});
-function dirReader(fs){const m=new Map();let pre=null;for(const f of fs)m.set(f.webkitRelativePath,f);
-for(const p of m.keys())if(/(^|\/)resource_pack\/blocks\.json$/.test(p)){pre=p.slice(0,-11);break}
-if(pre===null)for(const p of m.keys())if(/(^|\/)blocks\.json$/.test(p)){pre=p.slice(0,-11);break}
-return{read:async p=>{const f=m.get((pre||'')+p);return f?new Uint8Array(await f.arrayBuffer()):null}}}
-const jparse=b=>{try{return JSON.parse(td.decode(b).replace(/^\uFEFF/,'').replace(/^\s*\/\/.*$/gm,''))}catch(e){return null}};
-/* register one resource pack (base=true: vanilla, never overrides add-ons already registered) */
-async function addPack(rd,base){const bt=await rd.read('textures/terrain_texture.json'),bb=await rd.read('blocks.json'),tt=bt&&jparse(bt),bj=bb&&jparse(bb);
-if(!(tt&&tt.texture_data)&&!bj)return false;
-rd.__base = !!base; if(base)TXP.unshift(rd);else TXP.push(rd);
-if(tt&&tt.texture_data)for(const k in tt.texture_data)if(!base||!TXD.has(k))TXD.set(k,tt.texture_data[k].textures);
-if(bj)for(const k in bj){const v=bj[k],n=k.replace('minecraft:','');if(v&&typeof v=='object'&&v.textures!==undefined&&(!base||!BD.has(n)))BD.set(n,v.textures)}
-ftl.length=0;return true}
-/* behaviour-pack custom block: minecraft:material_instances -> same spec shape as blocks.json */
-function regBP(j){const b=j&&j['minecraft:block'];if(!b||!b.description)return;const id=String(b.description.identifier||'').replace('minecraft:',''),mi=b.components&&b.components['minecraft:material_instances'];const gm=b.components&&b.components['minecraft:geometry'],gi=typeof gm=='string'?gm:gm&&gm.identifier;if(id&&gi&&!/^minecraft:/.test(gi))AGI.set(id,gi);if(!id||!mi)return;
-const t={};for(const k in mi){const v=mi[k],x=typeof v=='string'?v:v&&v.texture;if(x)t[k=='*'?'side':k]=x}
-const ks=Object.keys(t);if(ks.length)BD.set(id,ks.length==1&&t.side?t.side:t);ftl.length=0}
-/* add-ons embedded in the world file: resource_packs/<x>/ and behavior_packs/<x>/blocks/*.json */
-async function texWorld(z){try{const keep=TXP.filter(r=>r.__base);txEp++;txq.length=0;TL.clear();TXn=1;ftl.length=0;LECT.clear();LECF.clear();WTC=null;TXP.length=0;TXD.clear();BD.clear();for(const rd of keep)await addPack(rd,true);const g=new Map(),bp=[],gj=[];AGI.clear();AGM.clear();BMN.clear();ROTB.clear();
-for(const e of z){const m=e.name.match(/^(resource_packs|behavior_packs)\/[^/]+\/(.+)$/);if(!m)continue;
-if(m[1]=='resource_packs'){const k=e.name.slice(0,e.name.length-m[2].length);let r=g.get(k);if(!r)g.set(k,r=new Map());r.set(m[2],e);if(/^models\/blocks\/.+\.json$/.test(m[2]))gj.push(e)}else if(/^blocks\/.+\.json$/.test(m[2]))bp.push(e)}
-for(const r of g.values())if(r.has('textures/terrain_texture.json')||r.has('blocks.json'))await addPack({read:async p=>{const e=r.get(p);return e?z.get(e):null}});
-for(const e of bp){const j=jparse(await z.get(e));if(j)regBP(j)}
-for(const e of gj){const j=jparse(await z.get(e));if(j)geoReg(j,AGM);else console.warn('addon geometry: json parse failed',e.name)}if(AGM.size||AGI.size)console.info('addon geometry: '+AGM.size+' geometries, '+AGI.size+' blocks');for(const[b,gi]of AGI)if(!AGM.has(gi))console.warn('addon block '+b+': geometry not found ('+gi+')')}catch(e){console.warn('addon packs',e)}}
-function tpathI(k,i){const x=TXD.get(k);if(x===undefined)return null;if(!Array.isArray(x)||x[i]===undefined)return tpath(k);const e=x[i];return e&&typeof e=='object'?e.path:e}
-function tpath(k){const x=TXD.get(k);if(x===undefined)return null;let e=x;if(Array.isArray(x))e=x.find(s=>typeof s=='string'&&/_opaque$/.test(s))||x[0];return e&&typeof e=='object'?e.path:e}
-/* face order = mesher order: +X east, -X west, +Y up, -Y down, +Z south, -Z north */
-function facePaths(n,pv){if(n=='lectern')return null;if(n=='lever'){const p=tpath('cobblestone');return[p,p,p,p,p,p]}
-if(n=='grass_block'||n=='grass'){const s='textures/blocks/grass_side|g';return[s,s,'textures/blocks/grass_top|g','textures/blocks/dirt',s,s]}
-const t=BD.get(n)??BD.get(n=='cobblestone_stairs'?'stone_stairs':n);if(t===undefined)return null;
-if(pv&&t){let k=null;/* door: lower half = 'down' (door_lower), upper half = 'side' (door_upper). plants: lower = 'down', upper = 'up'. arrays are indexed by wood / plant type */
-if(pv.k=='d'&&typeof t=='object')k=pv.h?t.side:t.down;else if(pv.k=='p'&&typeof t=='object'&&(t.up||t.down))k=pv.h?t.up:t.down;else if(pv.k=='t'&&typeof t=='string')k=t;
-const p=k&&tpathI(k,pv.i|0);if(p)return[p,p,p,p,p,p]}
-const g=k=>typeof t=='string'?t:(t[k]!==undefined?t[k]:(k=='up'||k=='down')?(t.side??t.up??t.down):(t.side??t.east??t.north??t.south??t.west??t.up));
-/* Bedrock pane entries are written for a fixed model orientation (east/west = thin edge texture). Panes here run along either axis, so every side face uses the glass texture */
-const PN=/_pane$/.test(n)&&typeof t=='object'&&(t.north||t.south);
-return['east','west','up','down','south','north'].map(k=>{const v=PN&&k!='up'&&k!='down'?PN:g(k);return v&&tpath(v)})}
-function tintOf(n,f,pv){if(n=='grass_block'||n=='grass')return 0;if(n=='double_plant')return pv&&(pv.i==2||pv.i==3)?1:0;if(/^(short_grass|tallgrass|tall_grass|fern|large_fern|grass)$/.test(n))return 1;
-if(/^(oak|jungle|acacia|dark_oak|mangrove)_leaves$/.test(n)||/^(vine|waterlily|lily_pad)$/.test(n))return 2;if(n=='birch_leaves')return 3;if(n=='spruce_leaves')return 4;if(/^(flowing_)?water$/.test(n))return 5;return 0}
-function ft(a){let t=ftl[a];if(t)return t;const n=bnm[a];let P=facePaths(n,pvs[a]),R=null;if(P&&ors[a])[P,R]=orient(P,ors[a]);t=new Int32Array(6);
-for(let f=0;f<6;f++){const p=P&&P[f];t[f]=tintOf(n,f,pvs[a])<<16|(p?tile(p,col[a]):tile('solid:'+col[a],col[a]))|(R&&R[f]?1<<28:0)}return ftl[a]=t}
-const wtc=()=>WTC===null?(WTC=ft(gid('minecraft:water',{}))[2]):WTC;
-function txInit(){if(TXT||!gl)return;TXC=Math.max(2,Math.min(TXC,gl.getParameter(gl.MAX_ARRAY_TEXTURE_LAYERS)||TXC));TXT=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D_ARRAY,TXT);gl.texStorage3D(gl.TEXTURE_2D_ARRAY,5,gl.RGBA8,16,16,TXC);
-gl.texParameteri(gl.TEXTURE_2D_ARRAY,gl.TEXTURE_MIN_FILTER,gl.NEAREST_MIPMAP_LINEAR);gl.texParameteri(gl.TEXTURE_2D_ARRAY,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
-gl.texParameteri(gl.TEXTURE_2D_ARRAY,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D_ARRAY,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);fillSolid(0,0x808080)}
-/* all 5 mip levels are made on the CPU (no generateMipmap: that call over a 2048-layer array is slow / unreliable on iOS) */
-function put(i,px){gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D_ARRAY,TXT);gl.texSubImage3D(gl.TEXTURE_2D_ARRAY,0,0,0,i,16,16,1,gl.RGBA,gl.UNSIGNED_BYTE,px);
-let s=px,z=16;for(let l=1;l<5;l++){const n=z>>1,d=MIPB[l-1];for(let y=0;y<n;y++)for(let x=0;x<n;x++){const a=((y*2)*z+x*2)*4,b=a+z*4,o=(y*n+x)*4;for(let c=0;c<4;c++)d[o+c]=(s[a+c]+s[a+4+c]+s[b+c]+s[b+4+c]+2)>>2}
-gl.texSubImage3D(gl.TEXTURE_2D_ARRAY,l,0,0,i,n,n,1,gl.RGBA,gl.UNSIGNED_BYTE,d);s=d;z=n}}
-function fillSolid(i,c){const r=c>>16&255,g=c>>8&255,b=c&255;for(let k=0;k<1024;k+=4){PH[k]=r;PH[k+1]=g;PH[k+2]=b;PH[k+3]=255}put(i,PH)}
-function tile(p,fb){let i=TL.get(p);if(i!==undefined)return i;if(TXn>=TXC)return 0;i=TXn++;TL.set(p,i);txInit();fillSolid(i,fb);
-if(!p.startsWith('solid:')){txq.push([p,i,txEp]);while(txb<8&&txq.length>txb){txb++;txRun()}}else txSoon();return i}
-async function txRun(){try{while(txq.length){const[p,i,ep]=txq.shift();if(ep!==txEp)continue;try{const im=await txLoad(p);if(im&&ep===txEp&&TXT)put(i,new Uint8Array(im.data.buffer))}catch(e){}txSoon()}}finally{txb--}}
-function txSoon(){if(txTm)return;txTm=setTimeout(()=>{txTm=0;redraw()},150)}
-function tga(d){if(d.length<18)return null;const t=d[2],w=d[12]|d[13]<<8,h=d[14]|d[15]<<8,bp=d[16]>>3,top=d[17]&32;if((t!=2&&t!=10)||(bp!=3&&bp!=4)||!w||!h)return null;
-const o=new Uint8ClampedArray(w*h*4),n=w*h;let p=18+d[0],i=0;const set=s=>{const y=top?(i/w|0):h-1-(i/w|0),q=(y*w+i%w)*4;o[q]=d[s+2];o[q+1]=d[s+1];o[q+2]=d[s];o[q+3]=bp==4?d[s+3]:255;i++};
-if(t==2)while(i<n){set(p);p+=bp}else while(i<n){const c=d[p++],r=(c&127)+1;if(c&128){const s=p;p+=bp;for(let k=0;k<r&&i<n;k++)set(s)}else for(let k=0;k<r&&i<n;k++){set(p);p+=bp}}
-return{w,h,o}}
-/* first frame (w x w) of any png/tga, resampled to 16x16; "|g" = bake grass tint into the overlay (grass_side) */
-/* 'lec:name,x,y,w,h' -> 16x16 tile: crop at 1:1 from the resource-pack texture, edge-replicated padding (keeps mip levels clean), negative w/h = flipped */
-const LECT=new Map(), LECF=new Map();
-async function lecLoad(p){const q=p.slice(4).split(','),n=q[0],[x,y,w,h]=q.slice(1).map(Number);let A=LECT.get(n);
-if(!A){A=await txLoad('textures/blocks/'+n);if(!A)return null;LECT.set(n,A)}/* only found textures are cached, so a pack that is added later still works */
-const W=Math.abs(w),H=Math.abs(h),o=new Uint8ClampedArray(1024);
-for(let j=0;j<16;j++)for(let i=0;i<16;i++){const k=Math.min(i,W-1),l=Math.min(j,H-1),sx=w<0?x-1-k:x+k,sy=h<0?y-1-l:y+l,t=(sy*16+sx)*4,d=(j*16+i)*4;o[d]=A.data[t];o[d+1]=A.data[t+1];o[d+2]=A.data[t+2];o[d+3]=A.data[t+3]}
-return{data:o}}
-async function txLoad(p){if(p.startsWith('lec:'))return lecLoad(p);const g=p.endsWith('|g'),bp=g?p.slice(0,-2):p;
-for(let k=TXP.length-1;k>=0;k--){const rd=TXP[k];let src=null,w=0;
-let b=await rd.read(bp+'.png');
-if(b){src=await createImageBitmap(new Blob([b],{type:'image/png'}));w=src.width}
-else if((b=await rd.read(bp+'.tga'))){const t=tga(b);if(t&&g&&t.w==16&&t.h==16){const o=t.o;for(let i=0;i<1024;i+=4){const f=o[i+3]/255;o[i]*=1+(.475-1)*f;o[i+1]*=1+(.753-1)*f;o[i+2]*=1+(.353-1)*f;o[i+3]=255}return{data:o}}if(t){TXS2.width=t.w;TXS2.height=t.h;TXS2.getContext('2d').putImageData(new ImageData(t.o,t.w,t.h),0,0);src=TXS2;w=t.w}}
-if(!src)continue;
-TXX.clearRect(0,0,16,16);TXX.drawImage(src,0,0,w,w,0,0,16,16);if(src.close)src.close();
-const im=TXX.getImageData(0,0,16,16);
-if(g){const d=im.data;for(let i=0;i<1024;i+=4){if(d[i+3]){d[i]=d[i]*.475|0;d[i+1]=d[i+1]*.753|0;d[i+2]=d[i+2]*.353|0}d[i+3]=255}}
-return im}return null}
-/* textures are always on: the vanilla pack is loaded together with the world. Only if it cannot be found does the folder button appear */
-async function texBase(){if(TXB)return;msg('テクスチャを読み込み中…');for(const b of PACK_BASES)if(await addPack(urlReader(b),true)){TXB=1;break}msg('');$('tx').hidden=!!TXB}
-async function refreshTexturePack(rd){
-  if(!await addPack(rd,true)){msg('リソースパック内に terrain_texture.json / blocks.json が見つかりませんでした');return false}
-  TXB=1;$('tx').hidden=true;msg('');txEp++;txq.length=0;TL.clear();TXn=1;WTC=null;LECT.clear();LECF.clear();ftl.length=0;
-  if(W&&W.MC){W.MC.clear();W.mcF=0;try{await build()}catch(err){console.error(err);msg('テクスチャ読み込み後の再描画に失敗しました')}}
-  return true;
-}
-async function archiveReader(file){
-  const z=await openZip(file), te=z.find(e=>/(?:^|\/)textures\/terrain_texture\.json$/.test(e.name)), be=z.find(e=>/(?:^|\/)blocks\.json$/.test(e.name));
-  const marker=te?'textures/terrain_texture.json':be?'blocks.json':null, match=te||be;
-  if(!marker||!match)throw new Error('リソースパックの定義ファイルがありません');
-  const prefix=match.name.slice(0,-marker.length);
-  return {__base:true,read:async path=>{const e=z.find(x=>x.name===prefix+path);return e?z.get(e):null}};
-}
-$('tx').onclick=()=>$('txPackFile').click();
-$('txFolder').onclick=()=>$('fd').click();
-$('txPackFile').onchange=async e=>{const f=e.target.files&&e.target.files[0];e.target.value='';if(!f)return;try{const rd=await archiveReader(f);if(await refreshTexturePack(rd))msg('リソースパックを読み込みました')}catch(err){console.error(err);msg('リソースパックを読み込めませんでした: '+(err.message||err))}};
-$('fd').onchange=async e=>{const fs=[...e.target.files];e.target.value='';if(!fs.length)return;try{if(await refreshTexturePack(dirReader(fs)))msg('リソースパックを読み込みました')}catch(err){console.error(err);msg('リソースパックを読み込めませんでした: '+(err.message||err))}};
-
-/* ---------- add-on geometry from the world's own packs (vanilla shapes are always built in; no models/ folder is used) ----------
-   Cubes -> axis-aligned boxes (single-axis rotation + per-cube uv). All boxes must exist before the shader is built. */
-const GF=['east','west','up','down','south','north'];
-/* geometry list from a .geo.json: new format ("minecraft:geometry": [...]) and legacy format ("geometry.x": {bones,texturewidth,...}) */
-function geoList(j){const o=[],g=j&&j['minecraft:geometry'];
-if(Array.isArray(g)){for(const x of g){const d=x&&x.description||{};if(d.identifier)o.push({id:d.identifier,tw:+d.texture_width||16,th:+d.texture_height||16,bones:x.bones||[]})}}
-else if(j&&typeof j=='object')for(const k in j){const v=j[k];if(/^geometry\./.test(k)&&v&&typeof v=='object'&&Array.isArray(v.bones))o.push({id:k,tw:+(v.texturewidth||v.texture_width)||16,th:+(v.textureheight||v.texture_height)||16,bones:v.bones})}
-return o}
-/* per-face uv rects (0..16 tile units, face order = GF) and material_instance names from one cube. box uv [u,v] = standard unfolded layout */
-function cubeUV(c,tw,th){const R=(u,v,w,h)=>[u*16/tw,v*16/th,(u+w)*16/tw,(v+h)*16/th].map(x=>+x.toFixed(4)),F=R(0,0,tw,th);
-if(Array.isArray(c.uv)&&c.uv.length>=2){const[u,v]=c.uv,[w,h,d]=c.size;return{uv:[R(u,v+d,d,h),R(u+d+w,v+d,d,h),R(u+d,v,w,d),R(u+d+w,v+d,w,-d),R(u+2*d+w,v+d,w,h),R(u+d,v+d,w,h)],names:null}}
-if(c.uv&&typeof c.uv=='object'){let nm=null;const uv=GF.map((f,i)=>{const e=c.uv[f];if(!e||typeof e!='object')return F;if(e.material_instance&&typeof e.material_instance=='string')(nm=nm||[null,null,null,null,null,null])[i]=e.material_instance;
-if(!Array.isArray(e.uv))return F;const[u,v]=e.uv,[w,h]=e.uv_size||[tw,th];return R(u,v,w,h)});return{uv,names:nm}}
-return{uv:null,names:null}}
-/* add-on geometry (uv honoured, material_instance = the block's own material_instances name) */
-function geoReg(j,reg){for(const g of geoList(j)){const id=g.id,o=[];for(const b of g.bones||[])for(const c of b.cubes||[]){if(!c.origin||!c.size)continue;const[x,y,z]=c.origin,[w,h,d]=c.size;if(!(w>=0&&h>=0&&d>=0))continue;
-const cu=cubeUV(c,g.tw,g.th);
-const rr=c.rotation&&c.rotation.some(v=>v)?c.rotation:b.rotation&&b.rotation.some(v=>v)?b.rotation:null,pv=(c.rotation&&c.rotation.some(v=>v)?c.pivot:b.pivot)||[0,0,0];let rot=0;
-if(rr&&rr.filter(v=>v).length==1){const ax=rr.findIndex(v=>v),an=rr[ax]*Math.PI/180;rot=[ax,Math.cos(an),Math.sin(an),(pv[0]+8)/16,pv[1]/16,(pv[2]+8)/16]}/* single-axis rotation of the cube (or its bone) */
-const bi=bx(x+8,y,z+8,x+8+w,y+h,z+8+d,cu.uv,(cu.names?'n'+cu.names.join('|'):'')+(rot?'r'+rot.map(v=>+v.toFixed(5)).join(','):''));if(cu.names)BMN.set(bi,cu.names);if(rot){BOXES[bi].rot=rot;ROTB.add(bi)}o.push(bi)}reg.set(id,o)}}
-/* per-box texture override (material_instance = terrain_texture key); falls back to the block's own face texture */
-/* add-on: face material_instance name -> the block's material_instances texture key (regBP stores '*' as 'side') */
-function instTex(bn,name){const t=BD.get(bn);if(t===undefined)return null;if(typeof t=='string')return t;let v=t[name=='*'?'side':name];if(v===undefined)v=t.side!==undefined?t.side:Object.values(t)[0];return typeof v=='string'?v:null}
-function bt(sid,f,PK,c,a){const lf=LECF.get(sid);if(lf)return tile(lf[f],c);const n=BMN.get(sid);if(n&&n[f]&&a!==undefined){const k=instTex(bnm[a],n[f]),p=k&&tpath(k);if(p)return tile(p,c)}return PK[f]}
-const lecRT=st=>{const N=['north','east','south','west'],c=stv(st,'cardinal_direction'),d=stv(st,'direction');let t=typeof c=='string'?N.indexOf(c):d>=0&&d<=3?[2,3,0,1][d]:-1;if(t<0)t=0;return t*4};
-
 function meshSub(scx, sy, scz, b) {
   const { ox, oz } = W; for (let g = 0; g < 7; g++) { OPs[g].n = 0; TRs[g].n = 0; }
   const nbr = (x, y, zz, dx, dz) => { const nx = x + dx, nz = zz + dz; return nx >= 0 && nx < 16 && nz >= 0 && nz < 16 ? b[nx * 256 + nz * 16 + y] : getB(scx * 16 + nx, sy * 16 + y, scz * 16 + nz); };
   for (let i = 0; i < 4096; i++) {
     const a = b[i]; if (!a) continue; const x = i >> 8, zz = i >> 4 & 15, y = i & 15, ka = kind[a];
-    const wx = scx * 16 + x - ox, wy = sy * 16 + y, wz = scz * 16 + zz - oz, c = col[a], PK = ft(a), O = tr[a] ? TRs : OPs;
+    const wx = scx * 16 + x - ox, wy = sy * 16 + y, wz = scz * 16 + zz - oz, PK = ft(a), O = tr[a] ? TRs : OPs;
     if (wl[a]) { const ny = y + 1; let n; if (ny < 16) n = b[x * 256 + zz * 16 + ny]; else n = getB(scx * 16 + x, sy * 16 + ny, scz * 16 + zz); if (n >= 0 && !(n > 0 && (kind[n] == 1 || kind[n] == 2 || wl[n]))) emit(TRs, wx, wy, wz, wtc(), 2, WTOP); }
     if (ka == 4) {
       if (crs[a]) { const S = shp[a]; for (let si = 0; si < S.length; si++) { emit(O, wx, wy, wz, PK[0], 6, S[si]); emit(O, wx, wy, wz, PK[0], 7, S[si]); } continue; }
@@ -676,7 +506,7 @@ function meshSub(scx, sy, scz, b) {
             if (nx >= 0 && nx < 16 && ny >= 0 && ny < 16 && nz >= 0 && nz < 16) n = b[nx * 256 + nz * 16 + ny]; else n = getB(scx * 16 + nx, sy * 16 + ny, scz * 16 + nz);
             if (n > 0 && (kind[n] == 1 || (cfa[a] == 2 && cfa[n] == 2))) continue;
           }
-          emit(O, wx, wy, wz, bt(sid, f, PK, c, a), f, sid, rts[a]);
+          emit(O, wx, wy, wz, PK[f], f, sid, rts[a]);
         }
       }
       continue;
@@ -957,8 +787,6 @@ async function loadWorld(f) {
   await tick();
   try {
     const z = await openZip(f);
-    await texWorld(z);
-    await texBase();
     const lv = z.find(e => /(^|\/)level\.dat$/.test(e.name)); let name = f.name.replace(/\.\w+$/, ''), sx = 0, sz = 0;
     if (lv) { try { const d = await z.get(lv), o = nbt(d.subarray(8), { p: 0 }); if (o.LevelName) name = o.LevelName; sx = o.SpawnX | 0; sz = o.SpawnZ | 0; } catch (e) { } }
     const Ms = new Map([[0, new Map()], [1, new Map()], [2, new Map()]]), fc = new Map(); let cf = 0, fcb = 0;
@@ -1010,7 +838,7 @@ async function loadWorld(f) {
     const blockCountEl = document.getElementById('blockCount');
     if (blockCountEl) {
       let totalBlocks = 0;
-      for (const map of Ms.values()) totalBlocks += map.size;
+      for (const map of Ms) totalBlocks += map.size;
       blockCountEl.textContent = `${totalBlocks.toLocaleString()} チャンク`;
     }
 
@@ -1045,73 +873,350 @@ async function setDimension(d) {
 
 /* ---------- WebGL Rendering ---------- */
 let cv = null, gl = null;
-let T = [0, 0, 0], homeT = [0, 0, 0], Dst = 100, ya = .8, pi = .6, regions = new Map(), prog, uVP, uCam, uA, dirty = 0;
+let T = [0, 0, 0], homeT = [0, 0, 0], Dst = 100, ya = .8, pi = .6, regions = new Map(), prog, uVP, uCam, uA, uTex, uTint, dirty = 0;
 
-let bxN = 0, uTexL, uTintL;
-let UVL,UIX;
-const mkVS=()=>{UVL=[];UIX=BOXES.map(b=>b.uv?UVL.push(b.uv)-1:-1);bxN=BOXES.length;return`#version 300 es
-in ivec4 aP;in vec4 aC;uniform mat4 uVP;uniform vec3 uCam;out vec3 vC;uniform vec3 uTint[16];out vec2 vU;flat out int vT;flat out float vW;
-const float SH[6]=float[](.8,.7,1.,.5,.75,.65);
-const vec3 LO[${BOXES.length}]=vec3[](${BOXES.map(b=>`vec3(${b[0].toFixed(4)},${b[1].toFixed(4)},${b[2].toFixed(4)})`).join(',')});
-const vec3 HI[${BOXES.length}]=vec3[](${BOXES.map(b=>`vec3(${b[3].toFixed(4)},${b[4].toFixed(4)},${b[5].toFixed(4)})`).join(',')});
-const vec4 RA[${BOXES.length}]=vec4[](${BOXES.map(b=>b.rot?`vec4(${b.rot[0]}.,${b.rot[1].toFixed(6)},${b.rot[2].toFixed(6)},0.)`:'vec4(-1.,1.,0.,0.)').join(',')});
-const vec3 RP[${BOXES.length}]=vec3[](${BOXES.map(b=>b.rot?`vec3(${b.rot[3].toFixed(5)},${b.rot[4].toFixed(5)},${b.rot[5].toFixed(5)})`:'vec3(0.)').join(',')});
-const int UI[${BOXES.length}]=int[](${UIX.join(',')});
-const vec4 UT[${Math.max(1,UVL.length*6)}]=vec4[](${UVL.length?UVL.map(u=>u.map(r=>`vec4(${r.map(x=>(x/16).toFixed(5)).join(',')})`).join(',')).join(','):'vec4(0.)'});
-void main(){int sid=int(aC.a*255.+.5);vec3 base=aC.rgb;vU=vec2(0.);{int ti=int(aC.r*255.+.5);base=uTint[ti];vT=int(aC.g*255.+.5)*256+int(aC.b*255.+.5);vW=ti==5?.6:1.;}int f=aP.w&7;int a=f>>1;float s=(f&1)==0?1.:0.;float u=float(gl_VertexID&1),v=float(gl_VertexID>>1);
-if(f>=6){vec3 l=LO[sid],h=HI[sid];vec3 p=vec3(aP.xyz)+vec3(mix(l.x,h.x,u),mix(l.y,h.y,v),f==6?mix(l.z,h.z,u):mix(h.z,l.z,u));vC=base;vU=vec2(u,1.-v);gl_Position=uVP*vec4(p,1.);return;}
-vec3 q=a==0?vec3(s,u,v):a==1?vec3(u,s,v):vec3(u,v,s);vec3 p=vec3(aP.xyz)+mix(LO[sid],HI[sid],q);
-vec3 lc=mix(LO[sid],HI[sid],q);vU=a==0?vec2(s>.5?1.-lc.z:lc.z,1.-lc.y):a==1?vec2(lc.x,s>.5?lc.z:1.-lc.z):vec2(s>.5?lc.x:1.-lc.x,1.-lc.y);vC=base*SH[f];
-int ui=UI[sid];if(ui>=0){vec4 rc=UT[ui*6+f];float fu,fv;if(a==0){fu=s>.5?1.-v:v;fv=1.-u;}else if(a==1){fu=1.-u;fv=s>.5?1.-v:v;}else{fu=s>.5?u:1.-u;fv=1.-v;}vU=mix(rc.xy,rc.zw,vec2(fu,fv));}
-if(((aP.w>>10)&1)==1)vU=vec2(vU.y,1.-vU.x);
-int rt=(aP.w>>6)&15;vec4 ra=RA[sid];bool br=ra.x>-.5;
-vec3 nm=(a==0?vec3(1.,0.,0.):a==1?vec3(0.,1.,0.):vec3(0.,0.,1.))*(s*2.-1.);
-if(br){vec3 pv=RP[sid],pl=p-vec3(aP.xyz)-pv;float c=ra.y,k=ra.z;
-if(ra.x<.5){pl=vec3(pl.x,pl.y*c+pl.z*k,-pl.y*k+pl.z*c);nm=vec3(nm.x,nm.y*c+nm.z*k,-nm.y*k+nm.z*c);}
-else if(ra.x<1.5){pl=vec3(pl.x*c-pl.z*k,pl.y,pl.x*k+pl.z*c);nm=vec3(nm.x*c-nm.z*k,nm.y,nm.x*k+nm.z*c);}
-else{pl=vec3(pl.x*c-pl.y*k,pl.x*k+pl.y*c,pl.z);nm=vec3(nm.x*c-nm.y*k,nm.x*k+nm.y*c,nm.z);}
-p=vec3(aP.xyz)+pv+pl;}
-if(rt>0){float an=-float(rt)*.3926991;float cs=cos(an);float sn=sin(an);
-vec3 c0=vec3(float(aP.x)+.5,0.,float(aP.z)+.5);vec3 r=p-c0;
-p=c0+vec3(r.x*cs+r.z*sn,r.y,r.z*cs-r.x*sn);nm=vec3(nm.x*cs+nm.z*sn,nm.y,nm.z*cs-nm.x*sn);}
-if(rt>0||br){if(dot(uCam-p,nm)<0.){gl_Position=vec4(2.,2.,2.,1.);return;}
-gl_Position=uVP*vec4(p,1.);return;}
-float pa=a==0?p.x:a==1?p.y:p.z,ce=a==0?uCam.x:a==1?uCam.y:uCam.z;
-if((ce-pa)*(s*2.-1.)<0.){gl_Position=vec4(2.,2.,2.,1.);return;}
-gl_Position=uVP*vec4(p,1.);}`};
-const FS=`#version 300 es\nprecision highp float;precision highp int;precision highp sampler2DArray;in vec3 vC;in vec2 vU;flat in int vT;flat in float vW;uniform float uA;uniform sampler2DArray uTex;out vec4 o;\nvoid main(){vec4 t=texture(uTex,vec3(vU,float(vT)));bool bl=uA<1.;float a=bl?t.a*vW:t.a;if(a<(bl?.04:.5))discard;o=vec4(t.rgb*vC,bl?a:1.);}`;
-function mkProg() {
-  const sh = (type, source) => {
-    const shader = gl.createShader(type); gl.shaderSource(shader, source); gl.compileShader(shader);
-    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) { const error = gl.getShaderInfoLog(shader); gl.deleteShader(shader); throw new Error('WebGL shader compile: ' + error); }
-    return shader;
-  };
-  if (prog) gl.deleteProgram(prog);
-  prog = gl.createProgram();
-  gl.attachShader(prog, sh(gl.VERTEX_SHADER, mkVS()));
-  gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS));
-  gl.linkProgram(prog);
-  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error('WebGL program link: ' + gl.getProgramInfoLog(prog));
-  uVP = gl.getUniformLocation(prog, 'uVP'); uCam = gl.getUniformLocation(prog, 'uCam'); uA = gl.getUniformLocation(prog, 'uA');
-  uTexL = gl.getUniformLocation(prog, 'uTex'); uTintL = gl.getUniformLocation(prog, 'uTint[0]');
+/* ---------- Local Bedrock resource-pack textures ---------- */
+const TXP = [], TXD = new Map(), BD = new Map(), TL = new Map(), ftl = [];
+const TINTS = new Float32Array([
+  1, 1, 1,
+  .475, .753, .353,
+  .282, .710, .094,
+  .502, .655, .333,
+  .380, .600, .380,
+  .247, .463, .894
+]);
+let TXT = null, TXC = 0, TXn = 1, txEpoch = 0, selectedPackName = '', manualPackChosen = false;
+const TXS = document.createElement('canvas');
+TXS.width = TXS.height = 16;
+const TXX = TXS.getContext('2d', { willReadFrequently: true });
+
+function packJson(bytes) {
+  if (!bytes) return null;
+  try {
+    return JSON.parse(new TextDecoder().decode(bytes).replace(/^\uFEFF/, '').replace(/^\s*\/\/.*$/gm, ''));
+  } catch (_) {
+    return null;
+  }
 }
 
+function dirPackReader(files) {
+  const entries = new Map();
+  for (const file of files) {
+    const path = (file.webkitRelativePath || file.name).replace(/\\/g, '/').replace(/^\/+/, '');
+    entries.set(path, file);
+  }
+  const names = [...entries.keys()];
+  const marker = names.find(p => /(^|\/)textures\/terrain_texture\.json$/.test(p))
+    || names.find(p => /(^|\/)blocks\.json$/.test(p));
+  if (!marker) return null;
+  const prefix = marker.endsWith('terrain_texture.json')
+    ? marker.slice(0, -'textures/terrain_texture.json'.length)
+    : marker.slice(0, -'blocks.json'.length);
+  return {
+    read: async path => {
+      const file = entries.get(prefix + path) || entries.get(path);
+      return file ? new Uint8Array(await file.arrayBuffer()) : null;
+    }
+  };
+}
+
+async function zipPackReader(file) {
+  const zip = await openZip(file);
+  const marker = zip.find(e => /(^|\/)textures\/terrain_texture\.json$/.test(e.name))
+    || zip.find(e => /(^|\/)blocks\.json$/.test(e.name));
+  if (!marker) return null;
+  const suffix = marker.name.endsWith('terrain_texture.json') ? 'textures/terrain_texture.json' : 'blocks.json';
+  const prefix = marker.name.slice(0, -suffix.length);
+  return {
+    read: async path => {
+      const entry = zip.find(e => e.name === prefix + path) || zip.find(e => e.name === path);
+      return entry ? zip.get(entry) : null;
+    }
+  };
+}
+
+function firstTexturePath(value) {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const path = firstTexturePath(item);
+      if (path) return path;
+    }
+    return null;
+  }
+  if (value && typeof value === 'object') return firstTexturePath(value.path || value.textures);
+  if (typeof value !== 'string') return null;
+  return value.replace(/\.png$/i, '');
+}
+
+function resolveTexturePath(key) {
+  if (!key) return null;
+  const mapped = TXD.get(key);
+  let path = firstTexturePath(mapped);
+  if (!path) path = key;
+  if (path.startsWith('textures/')) return path;
+  return `textures/blocks/${path}`;
+}
+
+function textureFaces(name) {
+  let spec = BD.get(name);
+  if (spec === undefined) spec = BD.get(`minecraft:${name}`);
+  if (spec === undefined && (name === 'grass_block' || name === 'grass')) {
+    return ['grass_side', 'grass_side', 'grass_top', 'dirt', 'grass_side', 'grass_side'].map(resolveTexturePath);
+  }
+  const keys = ['east', 'west', 'up', 'down', 'south', 'north'];
+  if (typeof spec === 'string') return Array(6).fill(resolveTexturePath(spec));
+  if (spec && typeof spec === 'object') {
+    const fallback = spec.side ?? spec.north ?? spec.south ?? spec.west ?? spec.east ?? spec.up ?? spec.down;
+    const top = spec.up ?? spec.top ?? fallback;
+    const bottom = spec.down ?? spec.bottom ?? fallback;
+    const side = spec.side ?? fallback;
+    return [
+      resolveTexturePath(spec.east ?? side),
+      resolveTexturePath(spec.west ?? side),
+      resolveTexturePath(top),
+      resolveTexturePath(bottom),
+      resolveTexturePath(spec.south ?? side),
+      resolveTexturePath(spec.north ?? side)
+    ];
+  }
+  const alias = TXD.has(name) ? name : name;
+  return Array(6).fill(resolveTexturePath(alias));
+}
+
+function txInit() {
+  if (TXT || !gl) return;
+  TXC = Math.max(1, Math.min(2048, gl.getParameter(gl.MAX_ARRAY_TEXTURE_LAYERS) || 256));
+  TXT = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D_ARRAY, TXT);
+  gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, 16, 16, TXC);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  fillTextureLayer(0, 0x808080);
+}
+
+function fillTextureLayer(layer, color) {
+  if (!gl || !TXT) return;
+  const data = new Uint8Array(16 * 16 * 4);
+  const r = color >> 16 & 255, g = color >> 8 & 255, b = color & 255;
+  for (let i = 0; i < data.length; i += 4) {
+    data[i] = r; data[i + 1] = g; data[i + 2] = b; data[i + 3] = 255;
+  }
+  gl.bindTexture(gl.TEXTURE_2D_ARRAY, TXT);
+  gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, layer, 16, 16, 1, gl.RGBA, gl.UNSIGNED_BYTE, data);
+}
+
+async function loadTextureImage(path, layer, fallbackColor, epoch) {
+  try {
+    let bytes = null;
+    for (let i = TXP.length - 1; i >= 0 && !bytes; i--) {
+      bytes = await TXP[i].read(`${path}.png`);
+    }
+    if (!bytes || epoch !== txEpoch || !gl || !TXT) return;
+    const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+    TXX.clearRect(0, 0, 16, 16);
+    const size = Math.min(bitmap.width, bitmap.height);
+    TXX.drawImage(bitmap, 0, 0, size, size, 0, 0, 16, 16);
+    bitmap.close?.();
+    const pixels = TXX.getImageData(0, 0, 16, 16);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, TXT);
+    gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, layer, 16, 16, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixels.data);
+    redraw();
+  } catch (_) {
+    fillTextureLayer(layer, fallbackColor);
+  }
+}
+
+function tile(path, fallbackColor) {
+  const key = path || `solid:${fallbackColor}`;
+  let layer = TL.get(key);
+  if (layer !== undefined) return layer;
+  txInit();
+  if (TXn >= TXC) return 0;
+  layer = TXn++;
+  TL.set(key, layer);
+  fillTextureLayer(layer, fallbackColor);
+  if (path && TXP.length) loadTextureImage(path, layer, fallbackColor, txEpoch);
+  return layer;
+}
+
+function tintForBlock(name, face) {
+  if (name === 'grass_block' || name === 'grass') return face === 2 ? 1 : 0;
+  if (/^(short_grass|tallgrass|tall_grass|fern|large_fern|grass)$/.test(name)) return 1;
+  if (/^(oak|jungle|acacia|dark_oak|mangrove)_leaves$/.test(name) || /^(vine|waterlily|lily_pad)$/.test(name)) return 2;
+  if (name === 'birch_leaves') return 3;
+  if (name === 'spruce_leaves') return 4;
+  if (/^(flowing_)?water$/.test(name)) return 5;
+  return 0;
+}
+
+function packFace(tint, layer) {
+  return ((tint & 255) << 24) | (layer & 0xffffff);
+}
+
+function ft(blockId) {
+  let faces = ftl[blockId];
+  if (faces) return faces;
+  const name = bnm[blockId] || '';
+  const paths = textureFaces(name);
+  faces = new Int32Array(6);
+  for (let face = 0; face < 6; face++) {
+    const layer = tile(paths[face], col[blockId] || 0x808080);
+    faces[face] = packFace(tintForBlock(name, face), layer);
+  }
+  ftl[blockId] = faces;
+  return faces;
+}
+
+function wtc() {
+  return ft(gid('minecraft:water', {}))[2];
+}
+
+async function applyResourcePack(reader, name) {
+  const terrainBytes = await reader.read('textures/terrain_texture.json');
+  const blocksBytes = await reader.read('blocks.json');
+  const terrain = packJson(terrainBytes), blocks = packJson(blocksBytes);
+  if (!(terrain && terrain.texture_data) && !(blocks && typeof blocks === 'object')) {
+    throw new Error('resource_packフォルダではありません（terrain_texture.json / blocks.json が見つかりません）。');
+  }
+  TXP.length = 0;
+  TXP.push(reader);
+  TXD.clear();
+  BD.clear();
+  if (terrain && terrain.texture_data) {
+    for (const [key, entry] of Object.entries(terrain.texture_data)) TXD.set(key, entry?.textures ?? entry);
+  }
+  if (blocks && typeof blocks === 'object') {
+    for (const [key, entry] of Object.entries(blocks)) {
+      if (entry && typeof entry === 'object' && entry.textures !== undefined) {
+        BD.set(key.replace(/^minecraft:/, ''), entry.textures);
+      }
+    }
+  }
+  selectedPackName = name || 'リソースパック';
+  txEpoch++;
+  TL.clear();
+  TXn = 1;
+  ftl.length = 0;
+  if (gl) {
+    if (TXT) gl.deleteTexture(TXT);
+    TXT = null;
+    txInit();
+  }
+  if (W) {
+    W.MC.clear();
+    W.mcF = 0;
+    upload([]);
+    await build();
+  }
+  const status = document.getElementById('resourcePackStatus');
+  if (status) {
+    status.textContent = `${selectedPackName} を読み込みました。`;
+    status.className = 'resource-pack-status success';
+  }
+}
+
+async function loadRootTexturePack() {
+  const status = document.getElementById('resourcePackStatus');
+  try {
+    const url = new URL('textures.zip', document.baseURI);
+    const response = await fetch(url, { cache: 'no-cache' });
+    if (!response.ok) {
+      if (status && !manualPackChosen) {
+        status.textContent = 'textures.zipが見つかりません。手動選択もできます。';
+        status.className = 'resource-pack-status';
+      }
+      return;
+    }
+    const file = new File([await response.arrayBuffer()], 'textures.zip', { type: 'application/zip' });
+    const reader = await zipPackReader(file);
+    if (!reader) throw new Error('ZIP内にresource_packの構成が見つかりません。');
+    if (manualPackChosen) return;
+    await applyResourcePack(reader, 'GitHubルートのtextures.zip');
+  } catch (error) {
+    console.warn('Root textures.zip could not be loaded:', error);
+    if (status && !manualPackChosen) {
+      status.textContent = 'textures.zipを読み込めません。手動選択または簡易表示を使えます。';
+      status.className = 'resource-pack-status';
+    }
+  }
+}
+
+const VS = `#version 300 es
+in ivec4 aP;in vec4 aC;uniform mat4 uVP;uniform vec3 uCam;uniform vec3 uTint[6];
+out vec3 vC;out vec2 vU;flat out int vT;
+const float SH[6]=float[](.8,.7,1.,.5,.75,.65);
+const vec3 LO[${BOXES.length}]=vec3[](${BOXES.map(b => `vec3(${b[0].toFixed(4)},${b[1].toFixed(4)},${b[2].toFixed(4)})`).join(',')});
+const vec3 HI[${BOXES.length}]=vec3[](${BOXES.map(b => `vec3(${b[3].toFixed(4)},${b[4].toFixed(4)},${b[5].toFixed(4)})`).join(',')});
+void main(){
+  int sid=int(aC.a*255.+.5);int f=aP.w&7;int a=f>>1;float s=(f&1)==0?1.:0.;
+  float u=float(gl_VertexID&1),v=float(gl_VertexID>>1);
+  int tintId=clamp(int(aC.r*255.+.5),0,5);
+  vT=int(aC.g*255.+.5)*256+int(aC.b*255.+.5);
+  vC=uTint[tintId];
+  if(f>=6){
+    vec3 l=LO[sid],h=HI[sid];
+    vec3 p=vec3(aP.xyz)+vec3(mix(l.x,h.x,u),mix(l.y,h.y,v),f==6?mix(l.z,h.z,u):mix(h.z,l.z,u));
+    vU=vec2(u,1.-v);gl_Position=uVP*vec4(p,1.);return;
+  }
+  vec3 q=a==0?vec3(s,u,v):a==1?vec3(u,s,v):vec3(u,v,s);
+  vec3 lc=mix(LO[sid],HI[sid],q),p=vec3(aP.xyz)+lc;
+  vU=a==0?vec2(s>.5?1.-lc.z:lc.z,1.-lc.y):a==1?vec2(lc.x,s>.5?lc.z:1.-lc.z):vec2(s>.5?lc.x:1.-lc.x,1.-lc.y);
+  vC*=SH[f]*(.94+.012*float((aP.w>>3)&7));
+  int rt=(aP.w>>6)&15;
+  if(rt>0){
+    float an=-float(rt)*.3926991;float cs=cos(an);float sn=sin(an);
+    vec3 nm=(a==0?vec3(1.,0.,0.):a==1?vec3(0.,1.,0.):vec3(0.,0.,1.))*(s*2.-1.);
+    vec3 c0=vec3(float(aP.x)+.5,0.,float(aP.z)+.5);vec3 r=p-c0;
+    p=c0+vec3(r.x*cs+r.z*sn,r.y,r.z*cs-r.x*sn);nm=vec3(nm.x*cs+nm.z*sn,nm.y,nm.z*cs-nm.x*sn);
+    if(dot(uCam-p,nm)<0.){gl_Position=vec4(2.,2.,2.,1.);return;}
+    gl_Position=uVP*vec4(p,1.);return;
+  }
+  float pa=a==0?p.x:a==1?p.y:p.z,ce=a==0?uCam.x:a==1?uCam.y:uCam.z;
+  if((ce-pa)*(s*2.-1.)<0.){gl_Position=vec4(2.,2.,2.,1.);return;}
+  gl_Position=uVP*vec4(p,1.);
+}`;
+const FS = `#version 300 es
+precision highp float;precision highp int;precision highp sampler2DArray;
+in vec3 vC;in vec2 vU;flat in int vT;uniform float uA;uniform sampler2DArray uTex;out vec4 o;
+void main(){
+  vec4 texel=texture(uTex,vec3(vU,float(vT)));
+  if(uA>=1.){if(texel.a<.5)discard;o=vec4(texel.rgb*vC,1.);}
+  else{if(texel.a<.04)discard;o=vec4(texel.rgb*vC,texel.a*uA);}
+}`;
+
 function initWebGLCanvas() {
+  if (gl) return;
   const viewport = document.getElementById('viewport');
   if (!viewport) return;
-  if (!cv) { cv = document.createElement('canvas'); cv.setAttribute('aria-label', '3D world preview'); viewport.appendChild(cv); }
-  if (!gl) {
-    gl = cv.getContext('webgl2', { antialias: false, powerPreference: 'high-performance' });
-    if (!gl) { msg('WebGL2に対応していないブラウザです'); throw new Error('WebGL2に対応していないブラウザです'); }
-    gl.enable(gl.DEPTH_TEST); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.clearColor(.078, .086, .102, 1);
-    bindPointerEvents();
-    cv.addEventListener('webglcontextlost', e => { e.preventDefault(); ctxLost = 1; });
-    cv.addEventListener('webglcontextrestored', () => {
-      ctxLost = 0; txEp++; txq.length = 0; TXT = null; TL.clear(); TXn = 1; ftl.length = 0; WTC = null; regions.clear(); prog = null;
-      try { mkProg(); txInit(); if (W && W.MC) { W.MC.clear(); W.mcF = 0; build().catch(console.error); } else redraw(); } catch (e) { console.error(e); msg('テクスチャ描画の再初期化に失敗しました'); }
-    });
+
+  cv = document.createElement('canvas');
+  viewport.appendChild(cv);
+
+  gl = cv.getContext('webgl2', { antialias: false, powerPreference: 'high-performance' });
+  if (!gl) { msg('WebGL2に対応していないブラウザです'); return; }
+
+  const sh = (t, s) => { const h = gl.createShader(t); gl.shaderSource(h, s); gl.compileShader(h); return h; };
+  prog = gl.createProgram();
+  gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS));
+  gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+    msg('WebGLシェーダーを初期化できません: ' + gl.getProgramInfoLog(prog));
+    return;
   }
-  try { mkProg(); txInit(); } catch (e) { console.error(e); msg('テクスチャ描画の初期化に失敗しました: ' + (e.message || e)); throw e; }
+  uVP = gl.getUniformLocation(prog, 'uVP');
+  uCam = gl.getUniformLocation(prog, 'uCam');
+  uA = gl.getUniformLocation(prog, 'uA');
+  uTex = gl.getUniformLocation(prog, 'uTex');
+  uTint = gl.getUniformLocation(prog, 'uTint[0]');
+  gl.enable(gl.DEPTH_TEST);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  gl.clearColor(.078, .086, .102, 1);
+  txInit();
+
+  bindPointerEvents();
 }
 
 function freeReg(g) { for (const v of g.vs) gl.deleteVertexArray(v.vao); for (const b of g.bos) gl.deleteBuffer(b); }
@@ -1159,14 +1264,13 @@ function mat() {
 }
 
 function draw() {
-  dirty = 0; if (!gl || !cv || ctxLost) return;
+  dirty = 0; if (!gl || !cv) return;
   const r = Math.min(window.devicePixelRatio || 1, 2), w = cv.clientWidth * r | 0, h = cv.clientHeight * r | 0;
   if (cv.width != w || cv.height != h) { cv.width = w; cv.height = h; }
   gl.viewport(0, 0, w, h); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); if (!regions.size) return;
-  gl.useProgram(prog); const M = mat();
-  if (TXT) { gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D_ARRAY, TXT); }
-  gl.uniform1i(uTexL, 0); gl.uniform3fv(uTintL, TINTF);
-  gl.uniformMatrix4fv(uVP, false, M.m); gl.uniform3fv(uCam, M.e);
+  gl.useProgram(prog); txInit(); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D_ARRAY, TXT);
+  gl.uniform1i(uTex, 0); gl.uniform3fv(uTint, TINTS);
+  const M = mat(); gl.uniformMatrix4fv(uVP, false, M.m); gl.uniform3fv(uCam, M.e);
   const o = M.m, ce = M.e, pl = [], vis = [];
   for (const [sg, r] of [[1, 0], [-1, 0], [1, 1], [-1, 1], [1, 2], [-1, 2]]) pl.push([o[3] + sg * o[r], o[7] + sg * o[4 + r], o[11] + sg * o[8 + r], o[15] + sg * o[12 + r]]);
   for (const g of regions.values()) {
@@ -1248,44 +1352,86 @@ function updateChunkEditOverlay() {
     };
   };
   let count = 0;
+  const markerPositions = [];
+  const candidates = [];
+  const screenCX = overlayRect.width / 2, screenCY = overlayRect.height / 2;
   for (const col of W.cols) {
     const [cx, cz] = unckey(col);
     if (removedPreviewChunks.has(`${W.dim}:${cx}:${cz}`)) continue;
     const samples = [[1,1],[14,1],[14,14],[1,14]];
+    const y = topOf(cx, cz, 8, 8);
+    const baseY = y === null || !Number.isFinite(y) ? (W.y0 + W.y1 + 1) * 8 : y;
     const points = samples.map(([px,pz]) => {
-      let y = topOf(cx, cz, px, pz);
-      if (y === null || !Number.isFinite(y)) y = topOf(cx, cz, 8, 8);
-      if (y === null || !Number.isFinite(y)) y = (W.y0 + W.y1 + 1) * 8;
-      return project(cx * 16 + px + .5, y + .12, cz * 16 + pz + .5);
+      let py = topOf(cx, cz, px, pz);
+      if (py === null || !Number.isFinite(py)) py = baseY;
+      return project(cx * 16 + px + .5, py + .12, cz * 16 + pz + .5);
     });
     if (points.some(p => !p)) continue;
     const xs = points.map(p => p.x), ys = points.map(p => p.y);
     if (Math.max(...xs) < -24 || Math.max(...ys) < -24 || Math.min(...xs) > overlayRect.width + 24 || Math.min(...ys) > overlayRect.height + 24) continue;
+    const center = project(cx * 16 + 8, baseY + .3, cz * 16 + 8);
+    if (!center || center.x < -24 || center.y < -24 || center.x > overlayRect.width + 24 || center.y > overlayRect.height + 24) continue;
+    candidates.push({ cx, cz, points, center, distance: Math.hypot(center.x - screenCX, center.y - screenCY) });
+  }
+  // 編集マーカーと枠は、画面中央に近い最大4チャンクだけ描画する。
+  candidates.sort((a, b) => a.distance - b.distance);
+  for (const item of candidates.slice(0, 4)) {
+    const { cx, cz, points, center } = item;
     const polygon = document.createElementNS(svgNS, 'polygon');
     polygon.setAttribute('points', points.map(p => `${p.x},${p.y}`).join(' '));
     polygon.setAttribute('class', 'chunk-edit-outline');
     outlineLayer.appendChild(polygon);
-    const y = topOf(cx, cz, 8, 8);
-    const center = project(cx * 16 + 8, (y === null ? (W.y0 + W.y1 + 1) * 8 : y) + .3, cz * 16 + 8);
-    if (!center || center.x < -24 || center.y < -24 || center.x > overlayRect.width + 24 || center.y > overlayRect.height + 24) continue;
     const marker = document.createElement('button');
     marker.type = 'button'; marker.className = 'chunk-edit-marker'; marker.textContent = '✎';
     marker.title = `チャンク (${cx}, ${cz}) を削除`;
     marker.setAttribute('aria-label', `チャンク X=${cx}, Z=${cz} を削除`);
     marker.style.left = `${center.x}px`; marker.style.top = `${center.y}px`;
     marker.addEventListener('pointerdown', e => e.stopPropagation());
-    marker.addEventListener('click', e => {
+    marker.addEventListener('click', async e => {
       e.stopPropagation();
       if (!W) return;
       const label = `ディメンション: ${['オーバーワールド','ネザー','ジ・エンド'][W.dim] || W.dim}\nチャンク X: ${cx}\nチャンク Z: ${cz}`;
-      if (!window.confirm(`${label}\n\nこのチャンクをプレビューから削除しますか？\n※元の .mcworld ファイルは変更されません。`)) return;
+      const accepted = await showWebConfirm(`${label}\n\nこのチャンクをプレビューから削除しますか？\n※元の .mcworld ファイルは変更されません。`, 'チャンク削除の確認', '削除する');
+      if (!accepted) return;
       removeChunkFromPreview(cx, cz);
     });
     overlay.appendChild(marker); count++;
   }
   const status = document.getElementById('chunkEditStatus');
-  if (status) status.textContent = `チャンク上の鉛筆マークを押して削除（表示中 ${count} チャンク）`;
+  if (status) status.textContent = `中央付近の最大4チャンクのみ鉛筆マークを表示（表示中 ${count}/4）`;
 }
+function showWebConfirm(message, title = '操作の確認', okLabel = '続行') {
+  return new Promise(resolve => {
+    const modal = document.getElementById('webConfirm');
+    const messageEl = document.getElementById('webConfirmMessage');
+    const titleEl = document.getElementById('webConfirmTitle');
+    const ok = document.getElementById('webConfirmOK');
+    const cancel = document.getElementById('webConfirmCancel');
+    if (!modal || !messageEl || !titleEl || !ok || !cancel) { resolve(false); return; }
+    titleEl.textContent = title;
+    messageEl.textContent = message;
+    ok.textContent = okLabel;
+    modal.hidden = false;
+    const finish = value => {
+      modal.hidden = true;
+      ok.removeEventListener('click', onOK);
+      cancel.removeEventListener('click', onCancel);
+      modal.removeEventListener('click', onBackdrop);
+      document.removeEventListener('keydown', onKey);
+      resolve(value);
+    };
+    const onOK = () => finish(true);
+    const onCancel = () => finish(false);
+    const onBackdrop = e => { if (e.target === modal) finish(false); };
+    const onKey = e => { if (e.key === 'Escape') finish(false); };
+    ok.addEventListener('click', onOK);
+    cancel.addEventListener('click', onCancel);
+    modal.addEventListener('click', onBackdrop);
+    document.addEventListener('keydown', onKey);
+    cancel.focus();
+  });
+}
+
 function removeChunkFromPreview(cx, cz) {
   if (!W) return;
   const dim = W.dim;
@@ -1357,7 +1503,7 @@ async function resetChunkPreview() {
   const present=r.chunks.filter(c => W.cols.has(ckey(c.x,c.z)));
   if (!present.length) { reportEditor('指定範囲に表示データがありません。ディメンションとチャンク座標を確認してください。'); return; }
   const exact=`X ${r.x}〜${r.x+r.w-1}, Z ${r.z}〜${r.z+r.d-1} / ${r.w*r.d}チャンク`;
-  if (!confirm(`【プレビュー専用】${exact}\n\nこの操作は3D表示から対象チャンクを一時的に隠すだけです。ワールドファイルは変更しません。続行しますか？`)) return;
+  if (!(await showWebConfirm(`【プレビュー専用】${exact}\n\nこの操作は3D表示から対象チャンクを一時的に隠すだけです。ワールドファイルは変更しません。続行しますか？`, '範囲リセットの確認', '実行する'))) return;
   const saved=[];
   for (const c of present) {
     const ck=ckey(c.x,c.z), records=[];
@@ -1392,6 +1538,49 @@ const initializeViewerUI = () => {
   const resetButton = document.getElementById('resetView');
   const fullscreenButton = document.getElementById('fullscreen');
   const viewerPanel = document.querySelector('.viewer-panel');
+  const packFolderButton = document.getElementById('resourcePackFolderButton');
+  const packFileButton = document.getElementById('resourcePackFileButton');
+  const packFolderInput = document.getElementById('resourcePackFolder');
+  const packFileInput = document.getElementById('resourcePackFile');
+  const packStatus = document.getElementById('resourcePackStatus');
+  const showPackError = error => {
+    if (!packStatus) return;
+    packStatus.textContent = error?.message || String(error);
+    packStatus.className = 'resource-pack-status error';
+  };
+  packFolderButton?.addEventListener('click', () => packFolderInput?.click());
+  packFileButton?.addEventListener('click', () => packFileInput?.click());
+  packFolderInput?.addEventListener('change', async () => {
+    const files = [...(packFolderInput.files || [])];
+    packFolderInput.value = '';
+    if (!files.length) return;
+    manualPackChosen = true;
+    if (packStatus) {
+      packStatus.textContent = 'フォルダ内のリソースパックを確認中…';
+      packStatus.className = 'resource-pack-status';
+    }
+    try {
+      const reader = dirPackReader(files);
+      if (!reader) throw new Error('resource_packのフォルダを選んでください。');
+      await applyResourcePack(reader, files[0].webkitRelativePath?.split('/')[0] || '選択したフォルダ');
+    } catch (error) { showPackError(error); }
+  });
+  packFileInput?.addEventListener('change', async () => {
+    const file = packFileInput.files?.[0];
+    packFileInput.value = '';
+    if (!file) return;
+    manualPackChosen = true;
+    if (packStatus) {
+      packStatus.textContent = 'リソースパックを確認中…';
+      packStatus.className = 'resource-pack-status';
+    }
+    try {
+      const reader = await zipPackReader(file);
+      if (!reader) throw new Error('.mcpack/.zip内にresource_packの構成が見つかりません。');
+      await applyResourcePack(reader, file.name);
+    } catch (error) { showPackError(error); }
+  });
+
   const editToggle = document.getElementById('chunkEditToggle');
   const editOverlay = document.getElementById('chunkEditOverlay');
   const editStatus = document.getElementById('chunkEditStatus');
@@ -1417,6 +1606,7 @@ const initializeViewerUI = () => {
   editor.save?.addEventListener('click', downloadChunkResetPlan);
   for (const input of [editor.x,editor.z,editor.w,editor.d]) input?.addEventListener('change', previewChunkRange);
   updateChunkEditorState(false);
+  loadRootTexturePack();
 
   if (resetButton) {
     resetButton.addEventListener('click', () => {
