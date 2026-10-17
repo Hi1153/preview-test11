@@ -965,25 +965,40 @@ function registerCustomGeometry(json) {
       return p;
     };
     const boxes=[];
+    const boneRotated = name => {
+      let cur=bones.get(name), guard=0;
+      while(cur && guard++<32) {
+        if(Array.isArray(cur.rotation) && cur.rotation.some(v=>Math.abs(Number(v)||0)>0.001)) return true;
+        cur=cur.parent ? bones.get(cur.parent) : null;
+      }
+      return false;
+    };
     for(const bone of g.bones) for(const cube of bone.cubes||[]) {
       if(!Array.isArray(cube.origin)||!Array.isArray(cube.size)) continue;
       const origin=cube.origin.map(Number), size=cube.size.map(Number);
       if(![...origin,...size].every(Number.isFinite)||size.some(v=>v<0)) continue;
       const pivot=Array.isArray(cube.pivot)?cube.pivot:(Array.isArray(bone.pivot)?bone.pivot:[0,0,0]);
-      const pts=[];
-      for(let ix=0;ix<2;ix++) for(let iy=0;iy<2;iy++) for(let iz=0;iz<2;iz++) {
-        let p=[origin[0]+size[0]*ix,origin[1]+size[1]*iy,origin[2]+size[2]*iz];
-        const rel=[p[0]-pivot[0],p[1]-pivot[1],p[2]-pivot[2]];
-        p=rotate(rel,cube.rotation); p=[p[0]+pivot[0],p[1]+pivot[1],p[2]+pivot[2]];
-        p=applyBone(bone.name,p);
-        // Geometry X/Z are centred at zero; Y remains in block model coordinates.
-        pts.push([p[0]+8,p[1],p[2]+8]);
+      const hasRotation=(Array.isArray(cube.rotation)&&cube.rotation.some(v=>Math.abs(Number(v)||0)>0.001)) || boneRotated(bone.name);
+      // A rotated cube cannot be represented by the bounding box of its 8 corners:
+      // that turns thin diagonal parts into oversized axis-aligned blocks. Split it
+      // into small cells, transform every cell, and keep each transformed cell's bounds.
+      const step=hasRotation?3:Math.max(...size,1);
+      const ranges=size.map((v,i)=>{const out=[]; for(let a=0;a<v-0.0001;a+=step) out.push([a,Math.min(v,a+step)]); return out.length?out:[[0,0]];});
+      for(const xr of ranges[0]) for(const yr of ranges[1]) for(const zr of ranges[2]) {
+        const pts=[];
+        for(const ix of xr) for(const iy of yr) for(const iz of zr) {
+          let p=[origin[0]+ix,origin[1]+iy,origin[2]+iz];
+          const rel=[p[0]-pivot[0],p[1]-pivot[1],p[2]-pivot[2]];
+          p=rotate(rel,cube.rotation); p=[p[0]+pivot[0],p[1]+pivot[1],p[2]+pivot[2]];
+          p=applyBone(bone.name,p);
+          // Geometry X/Z are centred at zero; Y remains in block model coordinates.
+          pts.push([p[0]+8,p[1],p[2]+8]);
+        }
+        const mins=[0,1,2].map(i=>Math.min(...pts.map(p=>p[i])));
+        const maxs=[0,1,2].map(i=>Math.max(...pts.map(p=>p[i])));
+        if(maxs.some((v,i)=>v-mins[i] < 0.001)) continue;
+        boxes.push([mins[0],mins[1],mins[2],maxs[0],maxs[1],maxs[2]]);
       }
-      const mins=[0,1,2].map(i=>Math.min(...pts.map(p=>p[i])));
-      const maxs=[0,1,2].map(i=>Math.max(...pts.map(p=>p[i])));
-      // Do not clamp to a 16x16x16 cube: many valid Bedrock models extend beyond it.
-      if(maxs.some((v,i)=>v-mins[i] < 0.001)) continue;
-      boxes.push([mins[0],mins[1],mins[2],maxs[0],maxs[1],maxs[2]]);
     }
     if(boxes.length) CUSTOM_GEOMETRIES.set(id,boxes);
   }
