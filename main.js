@@ -280,7 +280,14 @@ for (let d = 0; d < 4; d++) { for (let o = 0; o < 2; o++) { tdBox(d, o, 0); tdBo
 
 function shape(n, st) {
   XC = 0; RT = 0; const m = n.replace(/^waxed_/, '');
-  const customId = CUSTOM_BLOCK_GEOMETRY.get(n) || CUSTOM_BLOCK_GEOMETRY.get(`minecraft:${n}`);
+  // Bedrock chunk palettes commonly strip the namespace (e.g. hiro:custom_block -> custom_block).
+  // Resolve exact identifiers first, then fall back to the final path component.
+  let customId = CUSTOM_BLOCK_GEOMETRY.get(n) || CUSTOM_BLOCK_GEOMETRY.get(`minecraft:${n}`);
+  if (!customId) {
+    for (const [blockId, geometryId] of CUSTOM_BLOCK_GEOMETRY) {
+      if (blockId.slice(blockId.indexOf(':') + 1) === n) { customId = geometryId; break; }
+    }
+  }
   const customBoxes = customId && CUSTOM_GEOMETRIES.get(customId);
   if (customBoxes && customBoxes.length) {
     // Rotate cuboids around the block centre according to common cardinal/facing states.
@@ -290,7 +297,10 @@ function shape(n, st) {
     else if (Number.isFinite(+dir)) turns = ((+dir % 4) + 4) % 4;
     return customBoxes.map(box => {
       let [x0,y0,z0,x1,y1,z1]=box;
-      for(let r=0;r<turns;r++) [x0,z0,x1,z1]=[16-z1,x0,16-z0,x1];
+      for(let r=0;r<turns;r++) {
+        const nx0=16-z1, nx1=16-z0, nz0=x0, nz1=x1;
+        x0=nx0; x1=nx1; z0=nz0; z1=nz1;
+      }
       return bx(x0,y0,z0,x1,y1,z1);
     });
   }
@@ -922,35 +932,60 @@ function packJson(bytes) {
 const CUSTOM_GEOMETRIES = new Map(); // geometry identifier -> cuboids in 0..16 coordinates
 const CUSTOM_BLOCK_GEOMETRY = new Map(); // block identifier -> geometry identifier
 function registerCustomGeometry(json) {
-  const list = [];
   const gs = json && json['minecraft:geometry'];
-  if (Array.isArray(gs)) {
-    for (const g of gs) {
-      const id = g && g.description && g.description.identifier;
-      if (!id) continue;
-      const boxes = [];
-      for (const bone of g.bones || []) for (const cube of bone.cubes || []) {
-        if (!Array.isArray(cube.origin) || !Array.isArray(cube.size)) continue;
-        const [x,y,z] = cube.origin, [w,h,d] = cube.size;
-        if (![x,y,z,w,h,d].every(Number.isFinite) || w <= 0 || h <= 0 || d <= 0) continue;
-        // Bedrock model origin is centred at X/Z=0 and Y=0; block coordinates are 0..16.
-        const px = x + 8, pz = z + 8, py = y;
-        boxes.push([Math.max(0,px), Math.max(0,py), Math.max(0,pz), Math.min(16,px+w), Math.min(16,py+h), Math.min(16,pz+d)]);
+  const list = Array.isArray(gs) ? gs : [];
+  // Support older geometry files whose geometry definitions are top-level keys.
+  if (!list.length && json && typeof json === 'object') {
+    for (const [key, g] of Object.entries(json)) {
+      if (/^geometry\./.test(key) && g && Array.isArray(g.bones)) {
+        list.push({description:{identifier:key}, bones:g.bones});
       }
-      if (boxes.length) CUSTOM_GEOMETRIES.set(id, boxes);
     }
-  } else if (json && typeof json === 'object') {
-    for (const [key,g] of Object.entries(json)) {
-      if (!/^geometry\./.test(key) || !g || !Array.isArray(g.bones)) continue;
-      const boxes=[];
-      for (const bone of g.bones) for (const cube of bone.cubes || []) {
-        if (!Array.isArray(cube.origin) || !Array.isArray(cube.size)) continue;
-        const [x,y,z]=cube.origin,[w,h,d]=cube.size;
-        if (![x,y,z,w,h,d].every(Number.isFinite) || w<=0 || h<=0 || d<=0) continue;
-        boxes.push([Math.max(0,x+8),Math.max(0,y),Math.max(0,z+8),Math.min(16,x+8+w),Math.min(16,y+h),Math.min(16,z+8+d)]);
+  }
+  const rotate = (p, rot) => {
+    let [x,y,z] = p;
+    const [rx,ry,rz] = (rot || [0,0,0]).map(v => (Number(v)||0)*Math.PI/180);
+    // Bedrock rotations are applied around X, then Y, then Z.
+    let c=Math.cos(rx), q=Math.sin(rx); [y,z]=[y*c-z*q,y*q+z*c];
+    c=Math.cos(ry); q=Math.sin(ry); [x,z]=[x*c+z*q,-x*q+z*c];
+    c=Math.cos(rz); q=Math.sin(rz); [x,y]=[x*c-y*q,x*q+y*c];
+    return [x,y,z];
+  };
+  for (const g of list) {
+    const id = g && g.description && g.description.identifier;
+    if (!id || !Array.isArray(g.bones)) continue;
+    const bones = new Map(g.bones.filter(b=>b && b.name).map(b=>[b.name,b]));
+    const cache = new Map();
+    const applyBone = (name, point) => {
+      const b=bones.get(name); if(!b) return point;
+      const pivot=Array.isArray(b.pivot)?b.pivot:[0,0,0];
+      let p=rotate([point[0]-pivot[0],point[1]-pivot[1],point[2]-pivot[2]],b.rotation);
+      p=[p[0]+pivot[0],p[1]+pivot[1],p[2]+pivot[2]];
+      if(b.parent && bones.has(b.parent)) p=applyBone(b.parent,p);
+      return p;
+    };
+    const boxes=[];
+    for(const bone of g.bones) for(const cube of bone.cubes||[]) {
+      if(!Array.isArray(cube.origin)||!Array.isArray(cube.size)) continue;
+      const origin=cube.origin.map(Number), size=cube.size.map(Number);
+      if(![...origin,...size].every(Number.isFinite)||size.some(v=>v<0)) continue;
+      const pivot=Array.isArray(cube.pivot)?cube.pivot:(Array.isArray(bone.pivot)?bone.pivot:[0,0,0]);
+      const pts=[];
+      for(let ix=0;ix<2;ix++) for(let iy=0;iy<2;iy++) for(let iz=0;iz<2;iz++) {
+        let p=[origin[0]+size[0]*ix,origin[1]+size[1]*iy,origin[2]+size[2]*iz];
+        const rel=[p[0]-pivot[0],p[1]-pivot[1],p[2]-pivot[2]];
+        p=rotate(rel,cube.rotation); p=[p[0]+pivot[0],p[1]+pivot[1],p[2]+pivot[2]];
+        p=applyBone(bone.name,p);
+        // Geometry X/Z are centred at zero; Y remains in block model coordinates.
+        pts.push([p[0]+8,p[1],p[2]+8]);
       }
-      if(boxes.length) CUSTOM_GEOMETRIES.set(key,boxes);
+      const mins=[0,1,2].map(i=>Math.min(...pts.map(p=>p[i])));
+      const maxs=[0,1,2].map(i=>Math.max(...pts.map(p=>p[i])));
+      // Do not clamp to a 16x16x16 cube: many valid Bedrock models extend beyond it.
+      if(maxs.some((v,i)=>v-mins[i] < 0.001)) continue;
+      boxes.push([mins[0],mins[1],mins[2],maxs[0],maxs[1],maxs[2]]);
     }
+    if(boxes.length) CUSTOM_GEOMETRIES.set(id,boxes);
   }
 }
 function registerCustomBlock(json) {
