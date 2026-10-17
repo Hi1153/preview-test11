@@ -511,8 +511,16 @@ function meshSub(scx, sy, scz, b) {
     const wx = scx * 16 + x - ox, wy = sy * 16 + y, wz = scz * 16 + zz - oz, PK = ft(a), O = tr[a] ? TRs : OPs;
     if (wl[a]) { const ny = y + 1; let n; if (ny < 16) n = b[x * 256 + zz * 16 + ny]; else n = getB(scx * 16 + x, sy * 16 + ny, scz * 16 + zz); if (n >= 0 && !(n > 0 && (kind[n] == 1 || kind[n] == 2 || wl[n]))) emit(TRs, wx, wy, wz, wtc(), 2, WTOP); }
     if (ka == 4) {
-      const customGeoId=cgeo[a], customGeometry=customGeoId && CUSTOM_GEOMETRIES.get(customGeoId);
-      if(customGeometry) { appendCustomModel(customVertices,customIndices,wx,wy,wz,customGeometry,bstates[a],customBlockMeta(bnm[a])); continue; }
+      const baseCustomGeoId=cgeo[a];
+      const blockMeta=customBlockMeta(bnm[a]);
+      let selectedCustomGeoId=baseCustomGeoId;
+      // Block permutations can swap to a different geometry for cardinal direction or state.
+      // Resolve the active geometry using the same Molang state conditions as transformations.
+      for(const perm of (blockMeta&&blockMeta.permutations)||[]) {
+        if(perm.geometryId && evalBoneCondition(perm.condition,bstates[a]||{})) selectedCustomGeoId=perm.geometryId;
+      }
+      const customGeometry=selectedCustomGeoId && CUSTOM_GEOMETRIES.get(selectedCustomGeoId);
+      if(customGeometry) { appendCustomModel(customVertices,customIndices,wx,wy,wz,customGeometry,bstates[a],blockMeta); continue; }
       if (crs[a]) { const S = shp[a]; for (let si = 0; si < S.length; si++) { emit(O, wx, wy, wz, PK[0], 6, S[si]); emit(O, wx, wy, wz, PK[0], 7, S[si]); } continue; }
       let S = shp[a], SK = 0; const di = dinf[a], sv = sti[a];
       if (di) { const py = di.u ? y - 1 : y + 1, pa = py >= 0 && py < 16 ? b[x * 256 + zz * 16 + py] : getB(scx * 16 + x, sy * 16 + py, scz * 16 + zz), pd = pa > 0 ? dinf[pa] : 0, lo = (di.u ? pd : di) || di, up = (di.u ? di : pd) || di; S = [doorBox(lo.d, lo.o, up.h)]; }
@@ -1080,7 +1088,11 @@ async function loadWorldAddons(zipEntries, zipGet) {
   for(const e of geo) { const j=packJson(await zipGet(e)); if(j) registerCustomGeometry(j); }
   // Some add-ons define block geometry under models/entity rather than models/blocks.
   // Only import identifiers actually referenced by blocks and not already supplied.
-  const neededEntityGeometry=new Set([...CUSTOM_BLOCK_GEOMETRY.values()].filter(id=>!CUSTOM_GEOMETRIES.has(id)));
+  const referencedGeometryIds = [
+    ...CUSTOM_BLOCK_GEOMETRY.values(),
+    ...[...CUSTOM_BLOCK_META.values()].flatMap(meta => (meta.permutations || []).map(perm => perm.geometryId).filter(Boolean))
+  ];
+  const neededEntityGeometry=new Set(referencedGeometryIds.filter(id=>!CUSTOM_GEOMETRIES.has(id)));
   for(const e of entityGeo) {
     if(!neededEntityGeometry.size) break;
     const j=packJson(await zipGet(e)); if(j) registerCustomGeometry(j,neededEntityGeometry);
@@ -1181,7 +1193,7 @@ function fillModelTextureLayer(layer, color=0x8a5aa0) {
   for(let i=0;i<data.length;i+=4){data[i]=r;data[i+1]=g;data[i+2]=b;data[i+3]=255;}
   gl.bindTexture(gl.TEXTURE_2D_ARRAY,modelTXT); gl.texSubImage3D(gl.TEXTURE_2D_ARRAY,0,0,0,layer,64,64,1,gl.RGBA,gl.UNSIGNED_BYTE,data);
 }
-async function loadModelTextureCrop(path, rect, textureWidth, textureHeight, layer, epoch) {
+async function loadModelTextureCrop(path, rect, textureWidth, textureHeight, layer, epoch, uvRotation=0) {
   let bitmap=null;
   try {
     let bytes=null, format='';
@@ -1202,8 +1214,20 @@ async function loadModelTextureCrop(path, rect, textureWidth, textureHeight, lay
     const sw=Math.max(0.01,ex-sx), sh=Math.max(0.01,ey-sy);
     const scale=64/Math.max(Math.abs(uw)||1,Math.abs(vh)||1);
     const dw=Math.max(1,Math.min(64,Math.abs(uw)*scale)), dh=Math.max(1,Math.min(64,Math.abs(vh)*scale));
+    const rotation=((Math.round(Number(uvRotation)||0)%360)+360)%360;
     modelTextureContext.clearRect(0,0,64,64);
-    if(sw>0 && sh>0) modelTextureContext.drawImage(bitmap,sx,sy,sw,sh,0,0,dw,dh);
+    if(sw>0 && sh>0) {
+      if(rotation===90) {
+        modelTextureContext.save(); modelTextureContext.translate(dh,0); modelTextureContext.rotate(Math.PI/2);
+        modelTextureContext.drawImage(bitmap,sx,sy,sw,sh,0,0,dw,dh); modelTextureContext.restore();
+      } else if(rotation===180) {
+        modelTextureContext.save(); modelTextureContext.translate(dw,dh); modelTextureContext.rotate(Math.PI);
+        modelTextureContext.drawImage(bitmap,sx,sy,sw,sh,0,0,dw,dh); modelTextureContext.restore();
+      } else if(rotation===270) {
+        modelTextureContext.save(); modelTextureContext.translate(0,dw); modelTextureContext.rotate(-Math.PI/2);
+        modelTextureContext.drawImage(bitmap,sx,sy,sw,sh,0,0,dw,dh); modelTextureContext.restore();
+      } else modelTextureContext.drawImage(bitmap,sx,sy,sw,sh,0,0,dw,dh);
+    }
     const pixels=modelTextureContext.getImageData(0,0,64,64);
     if(epoch!==modelTextureEpoch || !gl || !modelTXT) return;
     gl.bindTexture(gl.TEXTURE_2D_ARRAY,modelTXT);
@@ -1212,11 +1236,12 @@ async function loadModelTextureCrop(path, rect, textureWidth, textureHeight, lay
   } catch(error) { console.warn('Custom model texture crop failed:',path,error); }
   finally { if(bitmap && bitmap.close) bitmap.close(); }
 }
-function modelTexturePatch(textureKey, rect, textureWidth, textureHeight) {
+function modelTexturePatch(textureKey, rect, textureWidth, textureHeight, uvRotation=0) {
   modelTextureArrayInit();
   if(!modelTXT) return {layer:0, u:1, v:1};
   const path=resolveTexturePath(textureKey);
-  const key=JSON.stringify([path,rect.map(v=>Math.round((Number(v)||0)*1000)/1000),textureWidth,textureHeight]);
+  const rotation=((Math.round(Number(uvRotation)||0)%360)+360)%360;
+  const key=JSON.stringify([path,rect.map(v=>Math.round((Number(v)||0)*1000)/1000),textureWidth,textureHeight,rotation]);
   let entry=modelTextureLayers.get(key);
   if(entry) return entry;
   if(modelTextureCount>=modelTXC) {
@@ -1225,10 +1250,11 @@ function modelTexturePatch(textureKey, rect, textureWidth, textureHeight) {
   }
   const layer=modelTextureCount++;
   const uw=Math.abs(Number(rect[2])||0), vh=Math.abs(Number(rect[3])||0), scale=64/Math.max(uw||1,vh||1);
-  entry={layer,u:Math.max(1,Math.min(64,uw*scale))/64,v:Math.max(1,Math.min(64,vh*scale))/64};
+  const rotated=rotation===90 || rotation===270;
+  entry={layer,u:Math.max(1,Math.min(64,(rotated?vh:uw)*scale))/64,v:Math.max(1,Math.min(64,(rotated?uw:vh)*scale))/64};
   modelTextureLayers.set(key,entry);
   fillModelTextureLayer(layer,0x8a5aa0);
-  if(path) loadModelTextureCrop(path,rect,textureWidth,textureHeight,layer,modelTextureEpoch);
+  if(path) loadModelTextureCrop(path,rect,textureWidth,textureHeight,layer,modelTextureEpoch,rotation);
   return entry;
 }
 function rotateModelPoint(point, rotation) {
@@ -1290,8 +1316,9 @@ function appendCustomModel(vertices, indices, wx, wy, wz, geometry, states, meta
       const blockRotation=Array.isArray(blockTransform&&blockTransform.rotation)?blockTransform.rotation:[0,0,0];
       const blockScale=Array.isArray(blockTransform&&blockTransform.scale)?blockTransform.scale:[1,1,1];
       const blockTranslation=Array.isArray(blockTransform&&blockTransform.translation)?blockTransform.translation:[0,0,0];
-      const rotationPivot=Array.isArray(blockTransform&&blockTransform.rotation_pivot)?blockTransform.rotation_pivot:[.5,.5,.5];
-      const scalePivot=Array.isArray(blockTransform&&blockTransform.scale_pivot)?blockTransform.scale_pivot:[.5,.5,.5];
+      // minecraft:transformation pivots are relative to the block center (0,0,0).
+      const rotationPivot=Array.isArray(blockTransform&&blockTransform.rotation_pivot)?blockTransform.rotation_pivot:[0,0,0];
+      const scalePivot=Array.isArray(blockTransform&&blockTransform.scale_pivot)?blockTransform.scale_pivot:[0,0,0];
       const localTransform=(xyz)=>{
         // Inflate expands a cuboid equally on every side before cube/bone transforms.
         const p0=[x0-inflate+xyz[0]*(size[0]+2*inflate),y0-inflate+xyz[1]*(size[1]+2*inflate),z0-inflate+xyz[2]*(size[2]+2*inflate)];
@@ -1301,12 +1328,17 @@ function appendCustomModel(vertices, indices, wx, wy, wz, geometry, states, meta
         let p=applyBone(bone.name,cubePoint);
         // Geometry X/Z are centred on the block; Y is measured from its base.
         p=[p[0]/16+.5,p[1]/16,p[2]/16+.5];
-        // Match minecraft:transformation in the active block component/permutation.
-        const sp=scalePivot.map((v,i)=>Number(v)||0);
-        p=p.map((v,i)=>sp[i]+(v-sp[i])*(Number(blockScale[i])||0));
-        const rp=rotationPivot.map((v,i)=>Number(v)||0);
-        const br=rotateModelPoint([p[0]-rp[0],p[1]-rp[1],p[2]-rp[2]],blockRotation);
-        p=[br[0]+rp[0]+(Number(blockTranslation[0])||0),br[1]+rp[1]+(Number(blockTranslation[1])||0),br[2]+rp[2]+(Number(blockTranslation[2])||0)];
+        // Transform space is block-center-relative: this matches the component's
+        // default [0,0,0] pivots and avoids translating the model when rotated.
+        if(blockTransform) {
+          p=p.map(v=>v-.5);
+          const sp=scalePivot.map(v=>Number(v)||0);
+          p=p.map((v,i)=>sp[i]+(v-sp[i])*(blockScale[i]===undefined?1:(Number(blockScale[i])||0)));
+          const rp=rotationPivot.map(v=>Number(v)||0);
+          const br=rotateModelPoint([p[0]-rp[0],p[1]-rp[1],p[2]-rp[2]],blockRotation);
+          p=[br[0]+rp[0]+(Number(blockTranslation[0])||0),br[1]+rp[1]+(Number(blockTranslation[1])||0),br[2]+rp[2]+(Number(blockTranslation[2])||0)];
+          p=p.map(v=>v+.5);
+        }
         return [wx+p[0],wy+p[1],wz+p[2]];
       };
       const uvMap=cube.uv;
@@ -1324,10 +1356,16 @@ function appendCustomModel(vertices, indices, wx, wy, wz, geometry, states, meta
       for(const face of faceNames) {
         const fuv=(uvMap && !Array.isArray(uvMap) && uvMap[face]) || defaultUV(face);
         if(!fuv || !Array.isArray(fuv.uv)) continue;
-        const rect=[Number(fuv.uv[0])||0,Number(fuv.uv[1])||0,Number((fuv.uv_size||[])[0])||0,Number((fuv.uv_size||[])[1])||0];
+        const defaultFaceUVSize={
+          north:[Math.abs(size[0]),Math.abs(size[1])], south:[Math.abs(size[0]),Math.abs(size[1])],
+          east:[Math.abs(size[2]),Math.abs(size[1])], west:[Math.abs(size[2]),Math.abs(size[1])],
+          up:[Math.abs(size[0]),Math.abs(size[2])], down:[Math.abs(size[0]),Math.abs(size[2])]
+        };
+        const uvSize=Array.isArray(fuv.uv_size)?fuv.uv_size:defaultFaceUVSize[face];
+        const rect=[Number(fuv.uv[0])||0,Number(fuv.uv[1])||0,Number(uvSize[0])||0,Number(uvSize[1])||0];
         if(!rect[2] || !rect[3]) continue;
-        const textureKey=materialTextures[face]||materialTextures[face==='up'?'top':face==='down'?'bottom':face]||defaultTexture;
-        const patch=modelTexturePatch(textureKey,rect,tw,th);
+        const textureKey=(fuv.material_instance && materialTextures[fuv.material_instance]) || materialTextures[face] || materialTextures[face==='up'?'top':face==='down'?'bottom':face] || materialTextures['*'] || defaultTexture;
+        const patch=modelTexturePatch(textureKey,rect,tw,th,Number(fuv.uv_rotation)||0);
         const uvU0=rect[2]>=0 ? 0 : patch.u, uvU1=rect[2]>=0 ? patch.u : 0;
         const uvV0=rect[3]>=0 ? 0 : patch.v, uvV1=rect[3]>=0 ? patch.v : 0;
         const tuv=[[uvU0,uvV0],[uvU1,uvV0],[uvU1,uvV1],[uvU0,uvV1]];
